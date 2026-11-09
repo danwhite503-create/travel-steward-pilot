@@ -115,6 +115,7 @@
           <div id="trip-stations" class="stations"></div>
           <div id="trip-dates" class="route"></div>
         </div>
+        <section id="work" class="work" aria-label="Your team on this trip"></section>
         <section id="plan" class="plan" hidden aria-label="Your plan"></section>
         <details id="brief-wrap" class="panel brief-wrap" open>
         <summary><h3>Trip brief</h3></summary>
@@ -151,7 +152,6 @@
           <button type="submit">Save brief</button>
         </form>
         </details>
-        <div class="crew" aria-label="Working on this trip"><span class="crew-label">Working on this trip</span><span id="crew"></span></div>
         <h3>Notes</h3>
         <ul id="item-list" class="list"></ul>
         <form id="item-new" class="stack panel">
@@ -266,7 +266,11 @@
   <div id="confirm" class="confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-text" hidden>
     <div class="confirm-box">
       <p id="confirm-text"></p>
-      <label class="check" id="confirm-tick-wrap" hidden><input type="checkbox" id="confirm-tick"> I understand this deletes everything and can't be undone</label>
+      <div class="lever" id="confirm-lever-wrap" hidden>
+        <label for="confirm-lever" id="confirm-lever-label">Pull the lever all the way to delete. Let go early and it springs back.</label>
+        <div class="lever-track"><span class="lever-fill" id="confirm-lever-fill"></span><span class="lever-end" aria-hidden="true">Delete</span>
+          <input type="range" id="confirm-lever" min="0" max="100" step="5" value="0" aria-valuetext="Not pulled"></div>
+      </div>
       <div class="row">
         <button type="button" id="confirm-yes" class="danger">Delete</button>
         <button type="button" id="confirm-no" class="secondary">Cancel</button>

@@ -81,5 +81,31 @@
       <defs><clipPath id="${id}"><circle cx="100" cy="100" r="100"/></clipPath></defs>
       <g clip-path="url(#${id})"><rect width="200" height="200" fill="${m.bg}"/><circle cx="100" cy="230" r="120" fill="#ffffff" opacity=".14"/>${person(m)}</g></svg>`;
   }
-  window.TravelTeam = { TEAM, svg };
+  // While a specialist works: a small animated drawing of their own trade (120 x 40). Only fixed values
+  // reach the SVG; CSS in style.css moves the parts with classes (wk-*), and stops them for reduced motion.
+  const WORK = {
+    steward: `<path class="wk-draw" d="M10 30 C30 6 50 34 70 14 S100 10 110 24" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="6 5"/><circle cx="10" cy="30" r="4" fill="#ee352e"/><circle cx="70" cy="14" r="4" fill="#fccc0a"/><circle cx="110" cy="24" r="4" fill="#00933c"/>`,
+    rail: `<path d="M4 32 H116" stroke="#fff" stroke-width="2"/><path d="M4 36 H116" stroke="#fff" stroke-width="2" stroke-dasharray="2 6"/><g class="wk-move"><rect x="0" y="16" width="30" height="12" rx="5" fill="#fff"/><rect x="4" y="19" width="5" height="4" fill="#ee352e"/><rect x="12" y="19" width="5" height="4" fill="#ee352e"/><rect x="20" y="19" width="5" height="4" fill="#ee352e"/></g>`,
+    air: `<path d="M6 34 Q60 -6 114 34" fill="none" stroke="#fff" stroke-width="1.5" stroke-dasharray="3 4"/><g class="wk-arc"><path d="M0 0 L14 4 L0 8 L3 4 Z" fill="#fff"/></g>`,
+    stay: `<rect x="40" y="4" width="40" height="34" fill="#fff" opacity=".2"/>${[0,1,2].map((r) => [0,1,2].map((c) => `<rect class="wk-win d${r * 3 + c + 1}" x="${46 + c * 11}" y="${9 + r * 10}" width="7" height="6" fill="#fccc0a"/>`).join("")).join("")}`,
+    dining: `<path d="M36 26 H84 Q82 38 60 38 Q38 38 36 26 Z" fill="#fff"/>${[48, 60, 72].map((x, i) => `<path class="wk-steam d${i + 1}" d="M${x} 22 q-4 -5 0 -10 q4 -5 0 -10" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>`).join("")}`,
+    events: `<rect x="30" y="6" width="60" height="30" rx="3" fill="#fff" opacity=".25"/>${[0,1,2,3,4,5,6].map((i) => `<rect class="wk-win d${i + 1}" x="${33 + i * 8}" y="20" width="6" height="10" fill="#5b2d86"/>`).join("")}<rect x="30" y="6" width="60" height="8" fill="#5b2d86"/>`,
+    around: `<path d="M8 22 H112" stroke="#fff" stroke-width="4"/>${[8, 44, 80, 112].map((x) => `<circle cx="${x}" cy="22" r="5" fill="#fff" stroke="#111" stroke-width="2"/>`).join("")}<circle class="wk-move" cx="8" cy="22" r="4" fill="#ff6319"/>`,
+    impact: `<rect x="20" y="16" width="80" height="10" rx="5" fill="#fff" opacity=".3"/><rect class="wk-fill" x="20" y="16" width="80" height="10" rx="5" fill="#7cc36a"/><path d="M104 22 Q112 12 118 22 Q112 32 104 22 Z" fill="#7cc36a"/>`,
+    booking: `${[14, 40, 66].map((x) => `<circle cx="${x}" cy="22" r="5" fill="none" stroke="#fff" stroke-width="2"/>`).join("")}<rect x="92" y="8" width="20" height="28" rx="2" fill="none" stroke="#fff" stroke-width="2"/><circle cx="107" cy="23" r="1.5" fill="#fff"/><g class="wk-stop"><path d="M0 0 L0 12 L4 9 L7 15 L9 14 L6 8 L11 8 Z" fill="#fff" stroke="#111" stroke-width="1"/></g>`,
+    critic: `${[10, 18, 26].map((y) => `<path d="M14 ${y} H84" stroke="#fff" stroke-width="3" opacity=".5"/>`).join("")}${[10, 18, 26].map((y, i) => `<path class="wk-tick d${i + 1}" d="M90 ${y} l3 3 l6 -6" fill="none" stroke="#7cc36a" stroke-width="2.5"/>`).join("")}<g class="wk-scan"><circle cx="0" cy="16" r="7" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M5 21 L11 27" stroke="#fff" stroke-width="3"/></g>`
+  };
+  // What each one is doing, when the planner's update gives no words of its own (shown with the state).
+  const DOING = {
+    steward: "Reading your brief and briefing the team", rail: "Checking each rail leg against two sources",
+    air: "Looking for nonstop flights where rail can't do it well", stay: "Searching the hotel guides, then pricing rooms",
+    dining: "Reading local guides and papers for places to eat", events: "Checking what's on and what's closed on your dates",
+    around: "Working out local transit from door to door", impact: "Adding up carbon per person per day",
+    booking: "Building booking links to the sellers' own pages", critic: "Checking the plan against every rule"
+  };
+  function work(key, stopped) {
+    const m = TEAM.find((x) => x.key === key); if (!m || !WORK[key]) return "";
+    return `<svg viewBox="0 0 120 40" class="work-art${stopped ? " stopped" : ""}" aria-hidden="true" focusable="false"><rect width="120" height="40" rx="6" fill="${m.bg}"/>${WORK[key]}</svg>`;
+  }
+  window.TravelTeam = { TEAM, svg, work, DOING };
 })();

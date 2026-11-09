@@ -88,17 +88,31 @@
     const a = el("a", { href: URL.createObjectURL(blob), download: name });
     document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
-  function confirmBox(text, typed) {
+  // Small removals confirm with one button. The deletes that can't be undone confirm by pulling a lever:
+  // the handle slid to the end of its track (mouse, touch or keyboard). Released early, it springs back.
+  function confirmBox(text, lever) {
     return new Promise((resolve) => {
+      const L = $("#confirm-lever"), fill = $("#confirm-lever-fill"), wrap = $("#confirm-lever-wrap");
       $("#confirm-text").textContent = text;
-      // The big deletes need a deliberate tick before the button works (no typing).
-      $("#confirm-tick-wrap").hidden = !typed; $("#confirm-tick").checked = false;
-      $("#confirm-yes").disabled = !!typed;
-      $("#confirm-tick").onchange = () => { $("#confirm-yes").disabled = typed && !$("#confirm-tick").checked; };
+      wrap.hidden = !lever; $("#confirm-yes").hidden = !!lever;
+      const paint = () => { fill.style.width = L.value + "%"; L.setAttribute("aria-valuetext", Number(L.value) >= 100 ? "Pulled: deleting" : L.value + " percent pulled"); };
+      L.value = 0; paint();
+      let settled = false, pointer = false;
+      const done = (ok) => {
+        if (settled) return; settled = true;
+        $("#confirm").hidden = true; $("#confirm-yes").hidden = false;
+        $("#confirm-yes").onclick = $("#confirm-no").onclick = L.oninput = L.onchange = L.onpointerdown = L.onpointerup = L.onpointercancel = null;
+        resolve(ok);
+      };
+      const springBack = () => { wrap.classList.add("springing"); L.value = 0; paint(); setTimeout(() => wrap.classList.remove("springing"), 300); };
+      L.oninput = paint;
+      L.onpointerdown = () => { pointer = true; };
+      L.onpointerup = L.onpointercancel = () => { pointer = false; setTimeout(() => { if (!settled && Number(L.value) < 100) springBack(); }, 0); };
+      L.onchange = () => { if (Number(L.value) >= 100) done(true); else if (!pointer) paint(); };
       $("#confirm").hidden = false;
-      const done = (ok) => { $("#confirm").hidden = true; $("#confirm-yes").onclick = $("#confirm-no").onclick = $("#confirm-tick").onchange = null; $("#confirm-yes").disabled = false; resolve(ok); };
-      $("#confirm-yes").onclick = () => done(!typed || $("#confirm-tick").checked);
+      $("#confirm-yes").onclick = () => done(!lever);
       $("#confirm-no").onclick = () => done(false);
+      (lever ? L : $("#confirm-yes")).focus();
     });
   }
   const draft = /^draft/i.test(CFG.NOTICE_VERSION || "draft");
@@ -261,12 +275,11 @@
   // ---------- the planning team (see team.js) ----------
   (function paintTeam() {
     const T = window.TravelTeam; if (!T) return;
-    const ul = $("#team-list"), crew = $("#crew");
+    const ul = $("#team-list");
     for (const m of T.TEAM) {
       const face = el("span", { class: "face" }); face.innerHTML = T.svg(m.key);
       ul.append(el("li", { class: m.key === "steward" ? "lead" : m.key === "critic" ? "lead inspector" : "" }, face,
         el("div", {}, el("span", { class: "who" }, m.name), el("span", { class: "role" }, m.role), el("p", { class: "does" }, m.does))));
-      const small = el("span", { class: "face", title: m.name + ", " + m.role }); small.innerHTML = T.svg(m.key); crew.append(small);
     }
   })();
 
@@ -358,7 +371,7 @@
         el("button", { type: "button", class: "link", onclick: () => openTrip(t.id) }, t.title),
         stations(p),
         plans[t.id] ? el("span", { class: "plan-chip" + ((plans[t.id].payload || {}).status === "checked" ? " checked" : "") },
-          (plans[t.id].payload || {}).status === "checked" ? "Plan ready" : "Plan in progress") : "",
+          { checked: "Plan ready", working: "Team at work" }[(plans[t.id].payload || {}).status] || "Plan in progress") : "",
         route(t.date_from, t.date_to, t.owner !== user.id ? "shared with you" : ""))));
     }
     if (!trips.length) ul.append(el("li", { class: "empty" }, "No trips yet. Add your first below: a title is enough to start, and dates help the planner."));
@@ -376,6 +389,7 @@
   async function openTrip(id) {
     current = trips.find((t) => t.id === id);
     if (!current) return;
+    currentPlan = null; shareLive = false;
     $("#trip-list-wrap").hidden = true; $("#trip-detail").hidden = false;
     $("#trip-title").textContent = current.title;
     const bp = (briefs[current.id] || {}).payload || {};
@@ -396,7 +410,8 @@
     const ul = $("#item-list"); ul.replaceChildren();
     const notes = (data || []).filter((i) => i.kind !== "brief" && i.kind !== "plan");
     const planItem = (data || []).filter((i) => i.kind === "plan").pop();
-    renderPlan(planItem ? planItem.payload || {} : null);
+    currentPlan = planItem ? planItem.payload || {} : null;
+    renderPlan(currentPlan); paintWork();
     // With a plan on the trip, the brief folds under its heading; without one, it stays open.
     $("#brief-wrap").open = !planItem;
     for (const i of notes) {
@@ -418,6 +433,59 @@
     if (error) return flash(explain(error), "bad");
     f.reset(); loadItems();
   });
+
+  // ---------- the team at work (docs/plan-format.md, v1.1 progress) ----------
+  // Shown only from what the planner wrote. Nothing moves unless an update says someone is working,
+  // and an update older than 30 minutes stops the motion and says so.
+  let currentPlan = null, shareLive = false;
+  const STALE_MS = 30 * 60e3;
+  const STATES = { queued: "Queued", working: "Working", waiting: "Waiting on you", done: "Done" };
+  function when(iso) {
+    const t = new Date(iso); if (isNaN(t)) return "";
+    return t.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+  function paintWork() {
+    const box = $("#work"); if (!box) return; box.replaceChildren(); box.classList.remove("stale");
+    const T = window.TravelTeam; if (!T || !current) return;
+    const pr = currentPlan && currentPlan.progress;
+    const teams = pr && Array.isArray(pr.teams) ? pr.teams.filter((x) => x && T.TEAM.some((m) => m.key === x.key) && STATES[x.state]) : [];
+    if (!teams.length || (currentPlan && currentPlan.status === "checked")) {
+      // No update from the planner: say plainly where the trip stands, and show the team without motion.
+      const faces = el("span", { class: "crew-faces" });
+      for (const m of T.TEAM) { const f = el("span", { class: "face", title: m.name + ", " + m.role }); f.innerHTML = T.svg(m.key); faces.append(f); }
+      const line = currentPlan && currentPlan.status === "checked" ? "The team has finished this plan." :
+        shareLive ? "Queued with Arlo. The team starts when the planner picks it up, and you'll see who's working here." :
+        "Share this trip with the planner (below) to start. You'll see who's working on it here.";
+      box.append(el("div", { class: "idle" }, el("div", { class: "crew" }, el("span", { class: "crew-label" }, "Your team"), faces), el("p", { class: "muted small" }, line)));
+      return;
+    }
+    const at = Date.parse(pr.updated_at || "");
+    const stale = !isNaN(at) && Date.now() - at > STALE_MS;
+    if (stale) box.classList.add("stale");
+    const working = teams.filter((x) => x.state === "working").length;
+    box.append(el("div", { class: "work-head" }, el("h3", {}, working ? "The team at work" : "The team"),
+      el("span", { class: "muted small", role: "status" }, stale ? "No update since " + when(pr.updated_at) + "." :
+        (working ? working + " working · " : "") + (isNaN(at) ? "" : "updated " + when(pr.updated_at)))));
+    const line = el("div", { class: "work-line", "aria-hidden": "true" });
+    for (const x of teams) { const m = T.TEAM.find((y) => y.key === x.key); line.append(el("span", { class: "stop " + x.state }, el("span", { class: "dot" }), m.name)); }
+    const rows = el("ul", { class: "work-rows" });
+    for (const x of teams) {
+      const m = T.TEAM.find((y) => y.key === x.key);
+      const f = el("span", { class: "face" }); f.innerHTML = T.svg(m.key);
+      const art = el("span", { class: "art" }); art.innerHTML = T.work(m.key, x.state !== "working" || stale);
+      const body = el("div", {}, el("div", {}, el("span", { class: "who" }, m.name), " ", el("span", { class: "muted small" }, m.role), el("span", { class: "state" }, STATES[x.state])),
+        el("p", { class: "doing" }, String(x.activity || (x.state === "working" ? T.DOING[m.key] : "")).slice(0, 300)));
+      if (Number.isInteger(x.done) && Number.isInteger(x.of) && x.of > 0 && x.done >= 0) {
+        const meter = el("span", { class: "meter" }, el("span", { class: "fill" }));
+        meter.firstChild.style.width = Math.min(100, Math.round(100 * x.done / x.of)) + "%";
+        body.append(el("div", { class: "count" }, meter, el("span", { class: "muted small" }, Math.min(x.done, x.of) + " of " + x.of + (x.unit ? " " + String(x.unit).slice(0, 40) : ""))));
+      }
+      if (x.at && !isNaN(Date.parse(x.at))) body.append(el("span", { class: "muted small" }, "Last: " + when(x.at)));
+      rows.append(el("li", { class: x.state }, f, art, body));
+    }
+    box.append(line, rows);
+  }
+  setInterval(() => { if (current && !$("#trip-detail").hidden) paintWork(); }, 60e3);
 
   // ---------- the plan, as the planner wrote it (docs/plan-format.md) ----------
   const SPECIALIST = { rail: "rail", air: "air", stay: "stay", dining: "dining", events: "events", around: "around", impact: "impact", booking: "booking" };
@@ -548,6 +616,7 @@
   async function loadShare() {
     const s = await sb.from("planner_shares").select("id, shared_at, revoked_at").eq("trip_id", current.id).is("revoked_at", null);
     const live = !s.error && (s.data || []).length > 0;
+    shareLive = live; paintWork();
     $("#share-state").textContent = live ? "Shared with the planner since " + fmtDate(s.data[0].shared_at.slice(0, 10)) + "." : "Not shared.";
     $("#share-on").hidden = live; $("#share-file").hidden = !live; $("#share-off").hidden = !live;
     const r = await sb.from("planner_reads").select("how, read_at").eq("trip_id", current.id).order("read_at", { ascending: false });

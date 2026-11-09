@@ -1,4 +1,6 @@
-# The plan on a trip: format v1
+# The plan on a trip: format v1.1
+
+v1.1 (9 Nov 2026): an optional `progress` block for the team at work, and status `working` (D-547). `v` stays 1.
 
 A plan is one trip item of kind `plan` on the trip. Its `payload` is the JSON below. The page shows it on the trip; the planner (Claude, through the owner's Supabase dashboard) writes it with `supabase/tools/write_plan.py`. Every text is shown as text, never as HTML. Links must be `https://`.
 
@@ -6,7 +8,7 @@ A plan is one trip item of kind `plan` on the trip. Its `payload` is the JSON be
 {
   "v": 1,
   "written_at": "2026-11-12T15:00:00Z",
-  "status": "checked",                     // "draft" until the inspector signs off, then "checked"
+  "status": "checked",                     // "working" while the team works (no options needed yet), "draft" until the inspector signs off, then "checked"
   "summary": "Three ways to do Lisbon, Coimbra and Porto by rail, 7 nights.",
   "options": [
     {
@@ -31,4 +33,20 @@ A plan is one trip item of kind `plan` on the trip. Its `payload` is the JSON be
 }
 ```
 
-`by` names the specialist who did that part: `rail`, `air`, `stay`, `dining`, `events`, `around`, `impact`, `booking`. Options are two to four. The never-kept check runs on the whole row in the database, so a link carrying a long number (8 or more digits in a row) is refused: use the operator's page without the token, and say so in the leg's detail.
+`by` names the specialist who did that part: `rail`, `air`, `stay`, `dining`, `events`, `around`, `impact`, `booking`. Options are two to four. The never-kept check runs on the whole row in the database, so a link is refused if it carries a run of 9 or more digits, 1–2 letters followed by 6–9 digits, or "#" followed by a digit: use the operator's page without the token, and say so in the leg's detail.
+
+## The team at work (`progress`, v1.1)
+
+While the planner works, the plan item may carry who is working and on what. The page shows it on the trip; nothing moves on the page unless a team's `state` is `working`, and an `updated_at` older than 30 minutes stops the motion and reads "No update since …". A plan with status `working` may have no options yet.
+
+```json
+"progress": {
+  "updated_at": "2026-11-10T15:00:00Z",
+  "teams": [
+    { "key": "rail", "state": "working", "activity": "Checking Lisbon to Coimbra against CP's timetable and a second source.",
+      "done": 1, "of": 3, "unit": "rail legs checked", "at": "2026-11-10T14:58:00Z" }
+  ]
+}
+```
+
+`key` is one of the team: `steward`, `critic`, or a specialist above. `state` is `queued`, `working`, `waiting` (on the traveler) or `done`. `activity` is plain words, 300 characters at most; `done` and `of` go together. `write_plan.py --progress PROGRESS.json TRIP_ID` writes only this block (adding a `working` plan with no options if the trip has none), and touches nothing else.
