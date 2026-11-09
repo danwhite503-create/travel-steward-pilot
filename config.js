@@ -8,7 +8,7 @@ window.PILOT_CONFIG = {
   OPERATOR_NAME: "Daniel White",
   CONTACT: "danwhite503@gmail.com", // approved by Daniel for the public page, 9 Nov 2026
   CLAUDE_PLAN: "Max",               // read from his Claude billing page by Claude, 9 Nov
-  CHATS_TRAINING: "[are / aren't]", // "are" or "aren't", from your Claude privacy settings
+  CHATS_TRAINING: "aren't",          // training turned off by Claude at his word, 9 Nov (checked after reload)
   // A label starting "draft" shows the draft banner and refuses consent.
   // Set the approved label (e.g. "pilot-2026-11-v1") once the notice is approved.
   NOTICE_VERSION: "draft-v0.3",
