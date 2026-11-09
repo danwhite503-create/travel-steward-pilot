@@ -46,10 +46,13 @@
   function confirmBox(text, typed) {
     return new Promise((resolve) => {
       $("#confirm-text").textContent = text;
-      $("#confirm-type-wrap").hidden = !typed; $("#confirm-type").value = "";
+      // The big deletes need a deliberate tick before the button works (no typing).
+      $("#confirm-tick-wrap").hidden = !typed; $("#confirm-tick").checked = false;
+      $("#confirm-yes").disabled = !!typed;
+      $("#confirm-tick").onchange = () => { $("#confirm-yes").disabled = typed && !$("#confirm-tick").checked; };
       $("#confirm").hidden = false;
-      const done = (ok) => { $("#confirm").hidden = true; $("#confirm-yes").onclick = $("#confirm-no").onclick = null; resolve(ok); };
-      $("#confirm-yes").onclick = () => done(!typed || $("#confirm-type").value.trim() === "DELETE");
+      const done = (ok) => { $("#confirm").hidden = true; $("#confirm-yes").onclick = $("#confirm-no").onclick = $("#confirm-tick").onchange = null; $("#confirm-yes").disabled = false; resolve(ok); };
+      $("#confirm-yes").onclick = () => done(!typed || $("#confirm-tick").checked);
       $("#confirm-no").onclick = () => done(false);
     });
   }
