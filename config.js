@@ -7,7 +7,7 @@ window.PILOT_CONFIG = {
   PILOT_NAME: "Travel Steward",   // his pick, 9 Nov (Build Map r39)
   OPERATOR_NAME: "Daniel White",
   CONTACT: "danwhite503@gmail.com", // approved by Daniel for the public page, 9 Nov 2026
-  CLAUDE_PLAN: "[plan]",            // e.g. "Max" — from your Claude settings
+  CLAUDE_PLAN: "Max",               // read from his Claude billing page by Claude, 9 Nov
   CHATS_TRAINING: "[are / aren't]", // "are" or "aren't", from your Claude privacy settings
   // A label starting "draft" shows the draft banner and refuses consent.
   // Set the approved label (e.g. "pilot-2026-11-v1") once the notice is approved.
