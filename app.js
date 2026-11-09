@@ -48,6 +48,7 @@
   const countryName = (() => { try { const d = new Intl.DisplayNames(["en"], { type: "region" }); return (c) => d.of(c) || c; } catch (e) { return (c) => c; } })();
   // The brief of each trip, by trip id: { id, payload }. Kept as a trip item of kind "brief".
   let briefs = {};
+  let plans = {};
   let travelerRows = [];
   function placesOf(p) { return (p && Array.isArray(p.places) ? p.places : []).filter(Boolean); }
   // Where a trip runs, as on a departure board: from, then each place in order.
@@ -346,6 +347,9 @@
     const b = await sb.from("trip_items").select("id, trip_id, payload, created_at").eq("kind", "brief").order("created_at");
     briefs = {};
     for (const r of (b.data || [])) briefs[r.trip_id] = { id: r.id, payload: r.payload || {} };
+    const pl = await sb.from("trip_items").select("id, trip_id, payload, created_at").eq("kind", "plan").order("created_at");
+    plans = {};
+    for (const r of (pl.data || [])) plans[r.trip_id] = { id: r.id, payload: r.payload || {} };
     ready.datedTrip = trips.some((t) => t.owner === user.id && t.date_from && t.date_to); paintReady();
     const ul = $("#trip-list"); ul.replaceChildren();
     for (const t of trips) {
@@ -353,6 +357,8 @@
       ul.append(el("li", {}, el("div", { class: "ticket " + livery(t.id, p.country) },
         el("button", { type: "button", class: "link", onclick: () => openTrip(t.id) }, t.title),
         stations(p),
+        plans[t.id] ? el("span", { class: "plan-chip" + ((plans[t.id].payload || {}).status === "checked" ? " checked" : "") },
+          (plans[t.id].payload || {}).status === "checked" ? "Plan ready" : "Plan in progress") : "",
         route(t.date_from, t.date_to, t.owner !== user.id ? "shared with you" : ""))));
     }
     if (!trips.length) ul.append(el("li", { class: "empty" }, "No trips yet. Add your first below: a title is enough to start, and dates help the planner."));
@@ -388,7 +394,11 @@
     const { data, error } = await sb.from("trip_items").select("id, kind, payload, created_by, created_at").eq("trip_id", current.id).order("created_at");
     if (error) return flash(explain(error), "bad");
     const ul = $("#item-list"); ul.replaceChildren();
-    const notes = (data || []).filter((i) => i.kind !== "brief");
+    const notes = (data || []).filter((i) => i.kind !== "brief" && i.kind !== "plan");
+    const planItem = (data || []).filter((i) => i.kind === "plan").pop();
+    renderPlan(planItem ? planItem.payload || {} : null);
+    // With a plan on the trip, the brief folds under its heading; without one, it stays open.
+    $("#brief-wrap").open = !planItem;
     for (const i of notes) {
       const text = (i.payload && (i.payload.text || i.payload.t)) || JSON.stringify(i.payload);
       const li = el("li", {}, el("span", { class: "tag" }, i.kind), el("span", { class: "grow" }, text));
@@ -408,6 +418,82 @@
     if (error) return flash(explain(error), "bad");
     f.reset(); loadItems();
   });
+
+  // ---------- the plan, as the planner wrote it (docs/plan-format.md) ----------
+  const SPECIALIST = { rail: "rail", air: "air", stay: "stay", dining: "dining", events: "events", around: "around", impact: "impact", booking: "booking" };
+  function face(key, cls) {
+    const f = el("span", { class: "face " + (cls || "") }); const T = window.TravelTeam;
+    if (T) f.innerHTML = T.svg(key); return f;
+  }
+  function safeLink(u) { try { const x = new URL(String(u)); return x.protocol === "https:" ? x.href : null; } catch (e) { return null; } }
+  function extLink(u, text, cls) {
+    const h = safeLink(u); if (!h) return el("span", { class: "muted" }, text);
+    return el("a", { href: h, target: "_blank", rel: "noopener noreferrer", class: cls || "" }, text);
+  }
+  const num = (x, d) => (typeof x === "number" && isFinite(x) ? x.toLocaleString("en-US", { maximumFractionDigits: d || 0 }) : null);
+  function renderPlan(p) {
+    const box = $("#plan"); box.replaceChildren();
+    if (!p || !Array.isArray(p.options) || !p.options.length) { box.hidden = true; return; }
+    box.hidden = false;
+    const checked = p.status === "checked";
+    box.append(el("div", { class: "plan-head" },
+      el("h3", {}, "Your plan"),
+      el("span", { class: "plan-status" + (checked ? " checked" : "") }, face(checked ? "critic" : "steward", "tiny"),
+        checked ? "Checked by Margit" + (p.inspector && p.inspector.score ? ", " + p.inspector.score : "") : "Draft: Margit hasn't checked it yet")));
+    if (p.summary) box.append(el("p", { class: "plan-summary" }, p.summary));
+    if (p.written_at) box.append(el("p", { class: "muted small" }, "Written " + fmtDate(String(p.written_at).slice(0, 10)) + " by Arlo and the team."));
+    const opts = p.options.slice(0, 4);
+    const bar = el("div", { class: "options", role: "tablist", "aria-label": "Ways to do this trip" });
+    const body = el("div", { class: "option-body" });
+    const show = (i) => {
+      for (const [j, b] of Array.from(bar.children).entries()) b.setAttribute("aria-selected", String(i === j));
+      body.replaceChildren(optionView(opts[i]));
+    };
+    opts.forEach((o, i) => bar.append(el("button", { type: "button", role: "tab", onclick: () => show(i) },
+      el("span", { class: "platform" }, String(o.id || String.fromCharCode(65 + i)).slice(0, 2)), el("span", {}, o.name || "Option " + (i + 1)))));
+    box.append(bar, body); show(0);
+    const gaps = (Array.isArray(p.gaps) ? p.gaps : []).filter(Boolean);
+    if (gaps.length) box.append(el("h4", {}, "Still open"), el("ul", { class: "gaps" }, ...gaps.map((g) => el("li", {}, String(g)))));
+    if (p.inspector && p.inspector.note) box.append(el("p", { class: "inspector-note" }, face("critic", "tiny"), String(p.inspector.note)));
+  }
+  function optionView(o) {
+    const v = el("div", { class: "option" });
+    if (o.tagline) v.append(el("p", { class: "tagline" }, o.tagline));
+    const m = el("div", { class: "metrics" });
+    if (num(o.nights) !== null) m.append(el("div", { class: "metric" }, el("span", { class: "big" }, num(o.nights)), el("span", { class: "small muted" }, o.nights === 1 ? "night" : "nights")));
+    if (num(o.carbon_kg_pppd, 1) !== null) {
+      const lim = typeof o.carbon_limit === "number" && o.carbon_limit > 0 ? o.carbon_limit : null;
+      const meter = el("span", { class: "meter" + (lim && o.carbon_kg_pppd > lim ? " over" : "") }, el("span", { class: "fill" }));
+      // CSSOM, not a style attribute: the page's CSP allows the first and refuses the second.
+      if (lim) meter.firstChild.style.width = Math.min(100, Math.round(100 * o.carbon_kg_pppd / lim)) + "%";
+      m.append(el("div", { class: "metric" }, el("span", { class: "big" }, num(o.carbon_kg_pppd, 1) + " kg"),
+        el("span", { class: "small muted" }, "carbon per person per day" + (lim ? ", limit " + num(lim) : "")), lim ? meter : ""));
+    }
+    if (o.cost && num(o.cost.amount) !== null) m.append(el("div", { class: "metric" }, el("span", { class: "big" }, (o.cost.currency || "") + " " + num(o.cost.amount)), el("span", { class: "small muted" }, o.cost.basis || "")));
+    v.append(m);
+    const ta = (Array.isArray(o.tier_a) ? o.tier_a : []);
+    if (ta.length) v.append(el("h4", {}, "The hard rules"), el("ul", { class: "tier-a" }, ...ta.map((r) =>
+      el("li", { class: r.ok ? "ok" : "bad" }, el("span", { class: "mark" }, r.ok ? "Passes" : "Breaks"), el("span", { class: "grow" }, String(r.rule || "")), r.figure ? el("span", { class: "muted" }, String(r.figure)) : ""))));
+    const tr = (Array.isArray(o.tradeoffs) ? o.tradeoffs : []).filter(Boolean);
+    if (tr.length) v.append(el("h4", {}, "What you trade"), el("ul", { class: "tradeoffs" }, ...tr.map((t) => el("li", {}, String(t)))));
+    const legs = (Array.isArray(o.legs) ? o.legs : []);
+    if (legs.length) {
+      const ul = el("ol", { class: "legs" });
+      for (const g of legs) {
+        const key = SPECIALIST[g.by] || "steward";
+        const T = window.TravelTeam, who = T ? (T.TEAM.find((x) => x.key === key) || {}).name : "";
+        const li = el("li", {}, face(key, "leg-face"), el("div", { class: "leg-body" },
+          el("div", { class: "leg-top" }, g.day ? el("span", { class: "day" }, "Day " + g.day) : "", el("span", { class: "leg-title" }, String(g.title || "")), g.price ? el("span", { class: "price" }, String(g.price)) : ""),
+          g.detail ? el("p", { class: "leg-detail" }, String(g.detail)) : "",
+          el("div", { class: "leg-foot" }, who ? el("span", { class: "muted small" }, "From " + who) : "",
+            g.book && g.book.url ? extLink(g.book.url, String(g.book.label || "Book on the seller's site"), "book") : "",
+            ...(Array.isArray(g.sources) ? g.sources : []).slice(0, 4).map((s) => extLink(s.url, String(s.title || "Source") + (s.tier ? " (" + s.tier + ")" : ""), "source")))));
+        ul.append(li);
+      }
+      v.append(el("h4", {}, "Day by day"), ul);
+    }
+    return v;
+  }
 
   // ---------- the trip brief ----------
   (function fillCountries() {

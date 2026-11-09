@@ -115,8 +115,10 @@
           <div id="trip-stations" class="stations"></div>
           <div id="trip-dates" class="route"></div>
         </div>
-        <form id="brief" class="panel brief stack">
-          <h3>Trip brief</h3>
+        <section id="plan" class="plan" hidden aria-label="Your plan"></section>
+        <details id="brief-wrap" class="panel brief-wrap" open>
+        <summary><h3>Trip brief</h3></summary>
+        <form id="brief" class="brief stack">
           <p class="muted small">What the planner needs to start. Fill in what you know and leave the rest.</p>
           <div class="row">
             <label class="field">Leaving from <input name="from" maxlength="80" autocomplete="off"></label>
@@ -148,6 +150,7 @@
           <label class="field">Things to avoid <textarea name="avoid" rows="2" maxlength="1000"></textarea></label>
           <button type="submit">Save brief</button>
         </form>
+        </details>
         <div class="crew" aria-label="Working on this trip"><span class="crew-label">Working on this trip</span><span id="crew"></span></div>
         <h3>Notes</h3>
         <ul id="item-list" class="list"></ul>

@@ -165,7 +165,13 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 /* ---------- trip brief and the ticket's stations ---------- */
 .stations{margin-top:6px;font:600 1.15rem/1.25 var(--board);letter-spacing:.01em;color:var(--ink)}
 .stations.empty{color:var(--muted);font-weight:500}
-.brief{margin:16px 0}
+.brief{margin:0}
+.brief-wrap{margin:16px 0}
+.brief-wrap summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px}
+.brief-wrap summary::-webkit-details-marker{display:none}
+.brief-wrap summary::after{content:"Show";font-size:var(--step--1);color:var(--muted);text-decoration:underline}
+.brief-wrap[open] summary::after{content:"Hide"}
+.brief-wrap summary h3{margin:0}
 .brief .choice{margin:4px 0}
 .brief select{max-width:none}
 
@@ -184,6 +190,50 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 #crew{display:flex}
 .crew .face{width:34px;height:34px;border-radius:50%;box-shadow:0 0 0 2px var(--bg);margin-left:-6px}
 .crew .face:first-child{margin-left:0}
+
+/* ---------- the plan ---------- */
+.plan{background:var(--surface);border:1px solid var(--rule);border-top:8px solid var(--ink);padding:20px;margin:16px 0}
+.plan-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.plan-head h3{margin:0;font-size:var(--step-2)}
+.plan-status{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:var(--step--1);color:var(--muted)}
+.plan-status.checked{color:var(--green)}
+.face.tiny{width:26px;height:26px;display:inline-block}.face.tiny svg,.leg-face svg{display:block;width:100%;height:100%}
+.plan-summary{font-size:1.1rem;margin-top:12px}
+.options{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 0;border-bottom:1px solid var(--rule)}
+.options button{display:flex;align-items:center;gap:10px;background:none;color:var(--muted);border:0;border-bottom:4px solid transparent;border-radius:0;padding:8px 12px 10px 0;min-height:0;font:600 1.15rem/1.2 var(--board)}
+.options button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--ink)}
+.options button:hover{background:none;color:var(--ink)}
+.platform{display:inline-grid;place-items:center;width:30px;height:30px;background:var(--ink);color:var(--bg);font:700 1.1rem/1 var(--board);border-radius:3px}
+.option{padding-top:14px}
+.tagline{font-weight:500;font-size:1.05rem}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:12px 0 4px}
+.metric{display:flex;flex-direction:column;gap:2px;border-left:4px solid var(--ink);padding-left:10px}
+.metric .big{font:700 1.7rem/1.1 var(--board)}
+.meter{display:block;height:6px;background:var(--rule);margin-top:6px}
+.meter .fill{display:block;height:100%;width:0;background:var(--green)}
+.meter.over .fill{background:var(--danger)}
+.tier-a,.tradeoffs,.gaps{list-style:none;padding:0;margin:6px 0}
+.tier-a li{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--rule)}
+.tier-a .mark{font-weight:700;font-size:.75rem;padding:1px 8px;border-radius:999px;color:#fff;background:var(--green)}
+.tier-a li.bad .mark{background:var(--danger)}
+.tradeoffs li,.gaps li{padding:6px 0 6px 18px;position:relative}
+.tradeoffs li::before{content:"";position:absolute;left:0;top:14px;width:10px;height:3px;background:var(--ink)}
+.gaps li::before{content:"";position:absolute;left:0;top:12px;width:8px;height:8px;border-radius:50%;border:2px solid var(--muted)}
+.legs{list-style:none;padding:0;margin:8px 0;position:relative}
+.legs::before{content:"";position:absolute;left:21px;top:22px;bottom:22px;width:4px;background:var(--rule)}
+.legs li{display:grid;grid-template-columns:46px 1fr;gap:12px;padding:10px 0}
+.leg-face{width:46px;height:46px;display:block;position:relative;z-index:1;border-radius:50%;box-shadow:0 0 0 3px var(--surface)}
+.leg-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.leg-top .day{font:600 .95rem/1 var(--board);color:var(--muted)}
+.leg-title{font:700 1.2rem/1.2 var(--board)}
+.leg-top .price{margin-left:auto;font:600 1.05rem/1 var(--board)}
+.leg-detail{margin:4px 0}
+.leg-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.plan .leg-foot a.book{display:inline-block;background:var(--ink);color:var(--bg);text-decoration:none;font-weight:500;padding:6px 12px;border-radius:3px;font-size:var(--step--1)}
+.leg-foot .source{font-size:var(--step--1);color:var(--muted)}
+.inspector-note{display:flex;gap:10px;align-items:center;margin-top:12px;font-size:var(--step--1)}
+.plan-chip{display:inline-block;margin-top:8px;font:600 .95rem/1 var(--board);padding:4px 10px;border:1px solid var(--ink);border-radius:3px}
+.plan-chip.checked{background:var(--ink);color:var(--bg)}
 
 /* ---------- consent page ---------- */
 .hero{padding:28px 0 8px}
