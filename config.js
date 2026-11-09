@@ -2,8 +2,8 @@
 // The publishable (anon) key is meant to be public: every row is protected by
 // row-level security in the database. Never put the secret (service_role) key here.
 window.PILOT_CONFIG = {
-  SUPABASE_URL: "sb_publishable_pWCS0k7QwbsJ6l9MxyjMBw_CWmGzSsr", // the project address (public by design)
-  SUPABASE_PUBLISHABLE_KEY: "",  // the "anon" / publishable key (Project Settings → API)
+  SUPABASE_URL: "https://seaxfyebgvmzroaxtgmv.supabase.co", // the project address (public by design)
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_pWCS0k7QwbsJ6l9MxyjMBw_CWmGzSsr",  // the "anon" / publishable key (Project Settings → API)
   PILOT_NAME: "Travel Steward",   // his pick, 9 Nov (Build Map r39)
   OPERATOR_NAME: "Daniel White",
   CONTACT: "danwhite503@gmail.com", // approved by Daniel for the public page, 9 Nov 2026
