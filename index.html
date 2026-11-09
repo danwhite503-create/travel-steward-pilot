@@ -9,24 +9,39 @@
 <link rel="stylesheet" href="style.css">
 <script src="config.js"></script>
 <script src="vendor/supabase-js-2.45.4/supabase.js"></script>
+<script src="avatar.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
 <div id="draft-banner" class="banner" hidden>Draft: this notice hasn't been approved yet, so sign-up is off.</div>
 <div id="config-banner" class="banner" hidden>Not set up yet: the database address and key are missing from config.js.</div>
+<header class="sign">
+  <div class="sign-inner">
+    <div class="brand">
+      <span class="bullet b-red" aria-hidden="true">T</span><span class="bullet b-blue" aria-hidden="true">S</span>
+      <h1 data-cfg="PILOT_NAME">Trip pilot</h1>
+      <span class="pilot-tag">Pilot</span>
+    </div>
+    <div class="who-wrap"><span id="who-badge" class="mini-badge" hidden></span><div id="who"></div></div>
+  </div>
+</header>
 <main>
-  <header class="top">
-    <h1 data-cfg="PILOT_NAME">Trip pilot</h1>
-    <div id="who" class="muted"></div>
-  </header>
 
   <p id="flash" class="flash" role="status" aria-live="polite" hidden></p>
 
   <!-- Consent and sign-in (signed out) -->
   <section id="view-consent" hidden>
+    <div class="hero">
     <h2><span data-cfg="PILOT_NAME"></span>: a trip-planning pilot, run by <span data-cfg="OPERATOR_NAME"></span> for a few friends.</h2>
-    <p>This is a small test, not a product. I'm asking a few people I know to plan one real trip each with a planner I've been building. It plans around values (trains before short flights, a carbon limit per day, local and independent places) and shows the tradeoffs with figures. It never books, pays or sends anything for you: you book on the seller's own page.</p>
-    <p>Before you sign in, please read this.</p>
+    <p class="lede">This is a small test, not a product. I'm asking a few people I know to plan one real trip each with a planner I've been building. It plans around values (trains before short flights, a carbon limit per day, local and independent places) and shows the tradeoffs with figures. It never books, pays or sends anything for you: you book on the seller's own page.</p>
+    <ol class="steps" aria-label="How to join">
+      <li><span class="bullet b-red" aria-hidden="true">1</span>Read what's kept and who sees it</li>
+      <li><span class="bullet b-yellow" aria-hidden="true">2</span>Tick the three boxes</li>
+      <li><span class="bullet b-blue" aria-hidden="true">3</span>Sign in with Google</li>
+    </ol>
+    </div>
+    <div class="panel terms">
+    <h3>Before you sign in, please read this.</h3>
     <ol class="consent">
       <li><strong>No lawyer has reviewed this.</strong> I'm running the pilot without legal review, only with people I know. If that isn't OK with you, please don't sign up; there's no hard feeling.</li>
       <li><strong>Where your data sits.</strong> In a database run by Supabase, a US company, in its US East (Northern Virginia) data center, in a project I own. It is not run by Anthropic.</li>
@@ -46,7 +61,9 @@
       <li><strong>When it ends.</strong> At the end of the pilot I'll delete your data unless you ask me to keep it. Either way, I'll delete the Claude chats that hold the trips you shared.</li>
     </ol>
     <p>The full notice: <a id="notice-link" href="notice.html">privacy notice</a>.</p>
-    <form id="consent-form" novalidate>
+    </div>
+    <form id="consent-form" class="panel agree" novalidate>
+      <h3>Your agreement</h3>
       <label class="check"><input type="checkbox" name="adult" required> I'm 18 or over.</label>
       <label class="check"><input type="checkbox" name="agree" required> I've read this, and I agree to my data being kept and used as described, without a lawyer's review.</label>
       <label class="check"><input type="checkbox" name="others" required> Anyone I add to a trip has agreed.</label>
@@ -78,8 +95,8 @@
     <div data-panel="trips">
       <div id="trip-list-wrap">
         <h2>Your trips</h2>
-        <ul id="trip-list" class="list"></ul>
-        <form id="trip-new" class="stack">
+        <ul id="trip-list" class="list trips"></ul>
+        <form id="trip-new" class="stack panel">
           <h3>New trip</h3>
           <label class="field">Title <input name="title" maxlength="120" required></label>
           <div class="row">
@@ -91,11 +108,13 @@
       </div>
       <div id="trip-detail" hidden>
         <button type="button" class="link" id="trip-back">← All trips</button>
-        <h2 id="trip-title"></h2>
-        <p id="trip-dates" class="muted"></p>
+        <div id="trip-ticket" class="ticket">
+          <h2 id="trip-title"></h2>
+          <div id="trip-dates" class="route"></div>
+        </div>
         <h3>On this trip</h3>
         <ul id="item-list" class="list"></ul>
-        <form id="item-new" class="stack">
+        <form id="item-new" class="stack panel">
           <label class="field">Add a note for the planner <textarea name="text" rows="3" maxlength="2000" required></textarea></label>
           <button type="submit">Add note</button>
         </form>
@@ -116,7 +135,45 @@
 
     <div data-panel="profile" hidden>
       <h2>You</h2>
-      <form id="profile-form" class="stack">
+      <div class="badge-wrap panel">
+        <div id="badge" class="badge"></div>
+        <div class="badge-controls">
+          <h3>Your traveler badge</h3>
+          <fieldset class="choice" id="badge-figure">
+            <legend>Figure</legend>
+            <label><input type="radio" name="figure" value="woman"> Woman</label>
+            <label><input type="radio" name="figure" value="man"> Man</label>
+            <label><input type="radio" name="figure" value="none"> No figure, just the scene</label>
+          </fieldset>
+          <fieldset class="choice swatches" id="badge-skin">
+            <legend>Skin tone</legend>
+            <label><input type="radio" name="skin" value="0"><span class="sw sk0"></span><span class="sr">Tone 1</span></label>
+            <label><input type="radio" name="skin" value="1"><span class="sw sk1"></span><span class="sr">Tone 2</span></label>
+            <label><input type="radio" name="skin" value="2"><span class="sw sk2"></span><span class="sr">Tone 3</span></label>
+            <label><input type="radio" name="skin" value="3"><span class="sw sk3"></span><span class="sr">Tone 4</span></label>
+            <label><input type="radio" name="skin" value="4"><span class="sw sk4"></span><span class="sr">Tone 5</span></label>
+          </fieldset>
+          <label class="field">Scene
+            <select id="badge-theme">
+              <option value="season">Match the season</option>
+              <option value="safari">Safari</option>
+              <option value="island">Island</option>
+              <option value="ski">Ski trip</option>
+              <option value="europe">European city</option>
+              <option value="hiking">Hiking</option>
+            </select>
+          </label>
+          <p class="muted small">Saved in this browser only. The pilot doesn't keep it.</p>
+        </div>
+      </div>
+      <div class="panel ready">
+        <h3>Ready to plan</h3>
+        <ul id="essentials" class="essentials" aria-label="The essentials the planner needs"></ul>
+        <p id="essentials-note"></p>
+        <h4>Extras for your badge</h4>
+        <ul id="extras" class="list extras"></ul>
+      </div>
+      <form id="profile-form" class="stack panel">
         <label class="field">Display name <input name="display_name" maxlength="80" required></label>
         <label class="field">Home city (a city, not a street address) <input name="home_city" maxlength="80"></label>
         <button type="submit">Save</button>
@@ -127,7 +184,7 @@
       <h2>Travelers</h2>
       <p class="muted">The people you travel with, you included. Only a passport's expiry date is kept, never its number.</p>
       <ul id="traveller-list" class="list"></ul>
-      <form id="traveller-new" class="stack">
+      <form id="traveller-new" class="stack panel">
         <h3>Add a traveler</h3>
         <div class="row">
           <label class="field">First name <input name="first_name" maxlength="60" required></label>

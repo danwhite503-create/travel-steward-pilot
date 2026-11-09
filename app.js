@@ -20,6 +20,29 @@
     for (const k of kids) n.append(k instanceof Node ? k : document.createTextNode(String(k)));
     return n;
   }
+  // Dates are stored as YYYY-MM-DD; show them as "Tue, Mar 9, 2027", read in UTC so they never shift a day.
+  function fmtDate(d) {
+    if (!d) return "";
+    const t = new Date(d + "T00:00:00Z");
+    return isNaN(t) ? d : t.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  }
+  function nights(a, b) {
+    if (!a || !b) return null;
+    const n = Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 864e5);
+    return isNaN(n) || n < 0 ? null : n;
+  }
+  // Each trip gets one of four intercity liveries, fixed by its id so it never changes between visits.
+  const LIVERIES = ["lv-it", "lv-jp", "lv-es", "lv-fr"];
+  function livery(id) { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return LIVERIES[h % LIVERIES.length]; }
+  // A trip's dates as a short route: departure, a line, return; nights underneath.
+  function route(a, b, extra) {
+    const n = nights(a, b);
+    const box = el("div", { class: "route" + (a && b ? "" : " undated") },
+      el("span", {}, a ? fmtDate(a) : "Dates not set"), el("span", { class: "track", "aria-hidden": "true" }), el("span", {}, b ? fmtDate(b) : ""));
+    const note = [n === null ? "" : n === 1 ? "1 night" : n + " nights", extra || ""].filter(Boolean).join(", ");
+    if (note) box.append(el("span", { class: "nights" }, note));
+    return box;
+  }
   function flash(msg, kind) {
     const f = $("#flash"); f.textContent = msg; f.className = "flash " + (kind || ""); f.hidden = false;
     clearTimeout(flash.t); flash.t = setTimeout(() => { f.hidden = true; }, 7000);
@@ -141,8 +164,8 @@
   }
   async function render(session) {
     user = session && session.user;
-    if (!user) { showConsent(false); $("#who").textContent = ""; return; }
-    $("#who").textContent = user.email || "";
+    if (!user) { showConsent(false); $("#who").textContent = ""; $("#who-badge").hidden = true; return; }
+    $("#who").textContent = user.email || ""; $("#who-badge").hidden = false;
     let ok = false;
     try { ok = await ensureConsent(); } catch (e) { flash(explain(e), "bad"); }
     if (!ok) {
@@ -163,6 +186,56 @@
     for (const p of $$("[data-panel]")) p.hidden = p.dataset.panel !== b.dataset.tab;
   });
 
+  // ---------- readiness: the essentials and the extras, worked out from what's already entered ----------
+  const ready = { name: false, city: false, nationality: false, passport: false, prefSections: new Set(), travelers: 0, datedTrip: false };
+  const ESSENTIALS = [
+    ["name", "Display name", "add your display name below"],
+    ["city", "Home city", "add your home city below"],
+    ["nationality", "Nationality", "add a traveler with a nationality on the Travelers tab"],
+    ["passport", "Passport expiry", "add a passport expiry date on the Travelers tab"],
+    ["prefs", "A preference", "add at least one line on the Preferences tab"]
+  ];
+  function essentialsDone() { return ESSENTIALS.map(([k]) => k === "prefs" ? ready.prefSections.size > 0 : !!ready[k]); }
+  function earned() {
+    const done = essentialsDone(), n = done.filter(Boolean).length;
+    return { progress: n / ESSENTIALS.length, hat: ready.prefSections.size >= 3, gear: ready.datedTrip, pin: ready.travelers, n, done };
+  }
+  function paintReady() {
+    const e = earned();
+    const ul = $("#essentials"); ul.replaceChildren();
+    ESSENTIALS.forEach(([k, label], i) => ul.append(el("li", { class: (e.done[i] ? "done" : "") + (e.done[i] && i > 0 && e.done[i - 1] ? " joined" : "") }, el("span", { class: "sr" }, e.done[i] ? "Done: " : "To do: "), label)));
+    const next = ESSENTIALS.find((x, i) => !e.done[i]);
+    $("#essentials-note").textContent = e.n === ESSENTIALS.length
+      ? "All five done: the planner has what it needs to start a trip."
+      : e.n + " of " + ESSENTIALS.length + " done. Next: " + next[2] + ".";
+    const ex = $("#extras"); ex.replaceChildren();
+    for (const [got, what, how] of [
+      [e.hat, "Hat", "fill in 3 preference sections (" + ready.prefSections.size + " so far)"],
+      [e.gear, "Gear for your scene", "add a trip with dates"],
+      [e.pin > 1, "Companion pin", "add a second traveler"]
+    ]) ex.append(el("li", { class: got ? "got" : "" }, el("span", { class: "who" }, what), el("span", { class: "muted grow" }, got ? "Earned" : "To earn: " + how)));
+    if (window.__paintBadge) window.__paintBadge();
+  }
+
+  // ---------- traveler badge (this browser only; see avatar.js) ----------
+  function setupBadge() {
+    const A = window.TravelAvatar; if (!A) return;
+    const v = A.load();
+    const paint = () => {
+      const e = earned();
+      A.render($("#badge"), v, "Your traveler badge, " + e.n + " of 5 essentials done", e);
+      A.render($("#who-badge"), v, "Your traveler badge", e);
+      $("#badge-skin").hidden = v.figure === "none";
+    };
+    for (const r of $$("#badge-figure input")) { r.checked = r.value === v.figure; r.addEventListener("change", () => { v.figure = r.value; A.save(v); paint(); }); }
+    for (const r of $$("#badge-skin input")) { r.checked = Number(r.value) === Number(v.skin); r.addEventListener("change", () => { v.skin = Number(r.value); A.save(v); paint(); }); }
+    const sel = $("#badge-theme"); sel.value = A.THEMES[v.theme] ? v.theme : "season";
+    sel.addEventListener("change", () => { v.theme = sel.value; A.save(v); paint(); });
+    window.__paintBadge = paint;
+    paint();
+  }
+  setupBadge();
+
   // ---------- profile ----------
   async function loadProfile() {
     const { data, error } = await sb.from("profiles").select("display_name, home_city").maybeSingle();
@@ -170,13 +243,15 @@
     const f = $("#profile-form");
     f.display_name.value = (data && data.display_name) || "";
     f.home_city.value = (data && data.home_city) || "";
+    ready.name = !!f.display_name.value.trim(); ready.city = !!f.home_city.value.trim(); paintReady();
   }
   $("#profile-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = e.target;
     const row = { user_id: user.id, display_name: f.display_name.value.trim(), home_city: f.home_city.value.trim() || null, updated_at: new Date().toISOString() };
     const { error } = await sb.from("profiles").upsert(row, { onConflict: "user_id" });
-    error ? flash(explain(error), "bad") : flash("Saved.", "ok");
+    if (error) return flash(explain(error), "bad");
+    flash("Saved.", "ok"); ready.name = !!row.display_name; ready.city = !!row.home_city; paintReady();
   });
 
   // ---------- travellers ----------
@@ -184,16 +259,18 @@
     const { data, error } = await sb.from("travellers").select("id, first_name, last_name, nationality, passport_expires").order("created_at");
     if (error) return flash(explain(error), "bad");
     const ul = $("#traveller-list"); ul.replaceChildren();
+    const rows = data || [];
+    ready.travelers = rows.length; ready.nationality = rows.some((t) => t.nationality); ready.passport = rows.some((t) => t.passport_expires); paintReady();
     for (const t of data || []) {
-      ul.append(el("li", {}, el("span", {}, [t.first_name, t.last_name].filter(Boolean).join(" ")),
-        el("span", { class: "muted" }, " " + [t.nationality, t.passport_expires && "passport expires " + t.passport_expires].filter(Boolean).join(" · ")),
+      ul.append(el("li", {}, el("span", { class: "who" }, [t.first_name, t.last_name].filter(Boolean).join(" ")),
+        el("span", { class: "muted grow" }, [t.nationality, t.passport_expires && "passport expires " + fmtDate(t.passport_expires).replace(/^[A-Za-z]{3}, /, "")].filter(Boolean).join(", ")),
         el("button", { type: "button", class: "link", onclick: async () => {
           if (!(await confirmBox("Remove " + t.first_name + "?"))) return;
           const r = await sb.from("travellers").delete().eq("id", t.id);
           r.error ? flash(explain(r.error), "bad") : loadTravellers();
         } }, "Remove")));
     }
-    if (!(data || []).length) ul.append(el("li", { class: "muted" }, "None yet."));
+    if (!(data || []).length) ul.append(el("li", { class: "empty" }, "No travelers yet. Add yourself first, then anyone coming with you."));
   }
   $("#traveller-new").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -210,6 +287,7 @@
     const { data, error } = await sb.from("prefs").select("section, items");
     if (error) return flash(explain(error), "bad");
     const by = Object.fromEntries((data || []).map((r) => [r.section, r.items || []]));
+    ready.prefSections = new Set(Object.keys(by).filter((k) => (by[k] || []).length)); paintReady();
     const wrap = $("#prefs-wrap"); wrap.replaceChildren();
     for (const [key, label] of SECTIONS) {
       const ta = el("textarea", { rows: "3", maxlength: "2000", "aria-label": label });
@@ -219,7 +297,8 @@
         e.preventDefault();
         const items = ta.value.split("\n").map((s) => s.trim()).filter(Boolean).map((s) => ({ label: s }));
         const { error } = await sb.from("prefs").upsert({ user_id: user.id, section: key, items, updated_at: new Date().toISOString() }, { onConflict: "user_id,section" });
-        error ? flash(explain(error), "bad") : flash("Saved.", "ok");
+        if (error) return flash(explain(error), "bad");
+        flash("Saved.", "ok"); items.length ? ready.prefSections.add(key) : ready.prefSections.delete(key); paintReady();
       });
       wrap.append(form);
     }
@@ -230,12 +309,14 @@
     const { data, error } = await sb.from("trips").select("id, owner, title, date_from, date_to, status").order("created_at", { ascending: false });
     if (error) return flash(explain(error), "bad");
     trips = data || [];
+    ready.datedTrip = trips.some((t) => t.owner === user.id && t.date_from && t.date_to); paintReady();
     const ul = $("#trip-list"); ul.replaceChildren();
     for (const t of trips) {
-      ul.append(el("li", {}, el("button", { type: "button", class: "link", onclick: () => openTrip(t.id) }, t.title),
-        el("span", { class: "muted" }, " " + [t.date_from, t.date_to].filter(Boolean).join(" → ") + (t.owner !== user.id ? " · shared with you" : ""))));
+      ul.append(el("li", {}, el("div", { class: "ticket " + livery(t.id) },
+        el("button", { type: "button", class: "link", onclick: () => openTrip(t.id) }, t.title),
+        route(t.date_from, t.date_to, t.owner !== user.id ? "shared with you" : ""))));
     }
-    if (!trips.length) ul.append(el("li", { class: "muted" }, "No trips yet."));
+    if (!trips.length) ul.append(el("li", { class: "empty" }, "No trips yet. Add your first below: a title is enough to start, and dates help the planner."));
   }
   $("#trip-new").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -252,7 +333,8 @@
     if (!current) return;
     $("#trip-list-wrap").hidden = true; $("#trip-detail").hidden = false;
     $("#trip-title").textContent = current.title;
-    $("#trip-dates").textContent = [current.date_from, current.date_to].filter(Boolean).join(" → ");
+    $("#trip-ticket").className = "ticket " + livery(current.id);
+    $("#trip-dates").replaceWith(Object.assign(route(current.date_from, current.date_to), { id: "trip-dates" }));
     const mine = current.owner === user.id;
     for (const s of ["#share-on", "#share-off", "#share-file", "#trip-delete"]) $(s).disabled = !mine;
     let canWrite = mine;
@@ -266,7 +348,7 @@
     const ul = $("#item-list"); ul.replaceChildren();
     for (const i of data || []) {
       const text = (i.payload && (i.payload.text || i.payload.t)) || JSON.stringify(i.payload);
-      const li = el("li", {}, el("span", { class: "tag" }, i.kind), " ", el("span", {}, text));
+      const li = el("li", {}, el("span", { class: "tag" }, i.kind), el("span", { class: "grow" }, text));
       if (i.created_by === user.id || current.owner === user.id) li.append(" ", el("button", { type: "button", class: "link", onclick: async () => {
         if (!(await confirmBox("Delete this item?"))) return;
         const r = await sb.from("trip_items").delete().eq("id", i.id);
@@ -274,7 +356,7 @@
       } }, "Delete"));
       ul.append(li);
     }
-    if (!(data || []).length) ul.append(el("li", { class: "muted" }, "Nothing yet."));
+    if (!(data || []).length) ul.append(el("li", { class: "empty" }, "Nothing yet. Add a note: where you want to go, what matters, what to avoid."));
   }
   $("#item-new").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -288,12 +370,12 @@
   async function loadShare() {
     const s = await sb.from("planner_shares").select("id, shared_at, revoked_at").eq("trip_id", current.id).is("revoked_at", null);
     const live = !s.error && (s.data || []).length > 0;
-    $("#share-state").textContent = live ? "Shared with the planner since " + s.data[0].shared_at.slice(0, 10) + "." : "Not shared.";
+    $("#share-state").textContent = live ? "Shared with the planner since " + fmtDate(s.data[0].shared_at.slice(0, 10)) + "." : "Not shared.";
     $("#share-on").hidden = live; $("#share-file").hidden = !live; $("#share-off").hidden = !live;
     const r = await sb.from("planner_reads").select("how, read_at").eq("trip_id", current.id).order("read_at", { ascending: false });
     const ul = $("#read-log"); ul.replaceChildren();
-    for (const x of (r.data || [])) ul.append(el("li", {}, x.read_at.replace("T", " ").slice(0, 16) + " UTC · " + (x.how === "export" ? "file made for the planner" : x.how)));
-    if (!(r.data || []).length) ul.append(el("li", { class: "muted" }, "No files made yet."));
+    for (const x of (r.data || [])) ul.append(el("li", {}, x.read_at.replace("T", " ").slice(0, 16) + " UTC: " + (x.how === "export" ? "file made for the planner" : x.how)));
+    if (!(r.data || []).length) ul.append(el("li", { class: "empty" }, "No files made yet."));
   }
   $("#share-on").addEventListener("click", async () => {
     const { error } = await sb.from("planner_shares").insert({ trip_id: current.id });
