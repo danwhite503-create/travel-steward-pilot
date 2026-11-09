@@ -10,6 +10,7 @@
 <script src="config.js"></script>
 <script src="vendor/supabase-js-2.45.4/supabase.js"></script>
 <script src="avatar.js" defer></script>
+<script src="team.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
@@ -86,6 +87,7 @@
   <section id="view-app" hidden>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="trips" aria-selected="true">Trips</button>
+      <button role="tab" data-tab="team">Team</button>
       <button role="tab" data-tab="profile">You</button>
       <button role="tab" data-tab="travellers">Travelers</button>
       <button role="tab" data-tab="prefs">Preferences</button>
@@ -110,9 +112,44 @@
         <button type="button" class="link" id="trip-back">← All trips</button>
         <div id="trip-ticket" class="ticket">
           <h2 id="trip-title"></h2>
+          <div id="trip-stations" class="stations"></div>
           <div id="trip-dates" class="route"></div>
         </div>
-        <h3>On this trip</h3>
+        <form id="brief" class="panel brief stack">
+          <h3>Trip brief</h3>
+          <p class="muted small">What the planner needs to start. Fill in what you know and leave the rest.</p>
+          <div class="row">
+            <label class="field">Leaving from <input name="from" maxlength="80" autocomplete="off"></label>
+            <label class="field">Main country <select name="country"><option value="">Choose a country</option></select></label>
+          </div>
+          <label class="field">Where to: one place per line, in order if you know it <textarea name="places" rows="3" maxlength="600"></textarea></label>
+          <fieldset class="choice" id="brief-dates">
+            <legend>Dates</legend>
+            <label><input type="radio" name="date_mode" value="fixed"> Fixed, as above</label>
+            <label><input type="radio" name="date_mode" value="flexible"> Flexible by a few days</label>
+            <label><input type="radio" name="date_mode" value="event"> Built around an event</label>
+            <label><input type="radio" name="date_mode" value="open"> Not set yet</label>
+          </fieldset>
+          <div class="row" id="brief-flex" hidden>
+            <label class="field">Days either way <input type="number" name="flex_days" min="1" max="30"></label>
+          </div>
+          <div class="row" id="brief-event" hidden>
+            <label class="field">The event <input name="event_name" maxlength="120"></label>
+            <label class="field">Its date <input type="date" name="event_date"></label>
+          </div>
+          <fieldset class="choice" id="brief-who"><legend>Who's going</legend></fieldset>
+          <fieldset class="choice" id="brief-purpose">
+            <legend>Purpose</legend>
+            <label><input type="radio" name="purpose" value="leisure"> Time off</label>
+            <label><input type="radio" name="purpose" value="work"> Work</label>
+            <label><input type="radio" name="purpose" value="mix"> A mix</label>
+          </fieldset>
+          <label class="field">Must-dos <textarea name="must" rows="2" maxlength="1000"></textarea></label>
+          <label class="field">Things to avoid <textarea name="avoid" rows="2" maxlength="1000"></textarea></label>
+          <button type="submit">Save brief</button>
+        </form>
+        <div class="crew" aria-label="Working on this trip"><span class="crew-label">Working on this trip</span><span id="crew"></span></div>
+        <h3>Notes</h3>
         <ul id="item-list" class="list"></ul>
         <form id="item-new" class="stack panel">
           <label class="field">Add a note for the planner <textarea name="text" rows="3" maxlength="2000" required></textarea></label>
@@ -131,6 +168,12 @@
         <h3>Delete this trip</h3>
         <button type="button" id="trip-delete" class="danger">Delete trip…</button>
       </div>
+    </div>
+
+    <div data-panel="team" hidden>
+      <h2>Your planning team</h2>
+      <p class="muted">Arlo, your Steward, runs each trip and briefs a specialist for each part of it. Each one checks the others' work, and the inspector checks the whole plan before it reaches you. Nobody here books or pays: you do that on the seller's own page.</p>
+      <ul id="team-list" class="team"></ul>
     </div>
 
     <div data-panel="profile" hidden>

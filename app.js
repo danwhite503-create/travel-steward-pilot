@@ -31,9 +31,30 @@
     const n = Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 864e5);
     return isNaN(n) || n < 0 ? null : n;
   }
-  // Each trip gets one of four intercity liveries, fixed by its id so it never changes between visits.
+  // Each trip gets one of four intercity liveries: Italy, Japan, Spain and France by the brief's main country;
+  // any other trip one of the four, fixed by its id so it never changes between visits.
   const LIVERIES = ["lv-it", "lv-jp", "lv-es", "lv-fr"];
-  function livery(id) { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return LIVERIES[h % LIVERIES.length]; }
+  const BY_COUNTRY = { IT: "lv-it", JP: "lv-jp", ES: "lv-es", FR: "lv-fr" };
+  function livery(id, country) {
+    if (BY_COUNTRY[country]) return BY_COUNTRY[country];
+    let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return LIVERIES[h % LIVERIES.length];
+  }
+  // ISO 3166 alpha-2 codes; names come from the browser, in English.
+  const COUNTRY_CODES = ("AD AE AF AG AL AM AO AR AT AU AZ BA BB BD BE BF BG BH BI BJ BN BO BR BS BT BW BY BZ CA CD CF CG CH CI CL CM CN CO CR CU CV CY CZ " +
+    "DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FM FR GA GB GD GE GH GM GN GQ GR GT GW GY HN HR HT HU ID IE IL IN IQ IR IS IT JM JO JP KE KG KH KI KM KN " +
+    "KP KR KW KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MH MK ML MM MN MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NR NZ OM PA PE PG PH PK PL " +
+    "PT PW PY QA RO RS RU RW SA SB SC SD SE SG SI SK SL SM SN SO SR SS ST SV SY SZ TD TG TH TJ TL TM TN TO TR TT TV TZ UA UG US UY UZ VA VC VE VN VU WS YE ZA ZM ZW " +
+    "HK MO PR TW GL FO AW CW BM KY VI GU PF NC RE GP MQ").split(" ");
+  const countryName = (() => { try { const d = new Intl.DisplayNames(["en"], { type: "region" }); return (c) => d.of(c) || c; } catch (e) { return (c) => c; } })();
+  // The brief of each trip, by trip id: { id, payload }. Kept as a trip item of kind "brief".
+  let briefs = {};
+  let travelerRows = [];
+  function placesOf(p) { return (p && Array.isArray(p.places) ? p.places : []).filter(Boolean); }
+  // Where a trip runs, as on a departure board: from, then each place in order.
+  function stations(p) {
+    const stops = [p.from, ...placesOf(p)].filter(Boolean);
+    return stops.length ? el("div", { class: "stations" }, stops.join(" → ")) : el("div", { class: "stations empty" }, "Brief not started");
+  }
   // A trip's dates as a short route: departure, a line, return; nights underneath.
   function route(a, b, extra) {
     const n = nights(a, b);
@@ -236,6 +257,18 @@
   }
   setupBadge();
 
+  // ---------- the planning team (see team.js) ----------
+  (function paintTeam() {
+    const T = window.TravelTeam; if (!T) return;
+    const ul = $("#team-list"), crew = $("#crew");
+    for (const m of T.TEAM) {
+      const face = el("span", { class: "face" }); face.innerHTML = T.svg(m.key);
+      ul.append(el("li", { class: m.key === "steward" ? "lead" : m.key === "critic" ? "lead inspector" : "" }, face,
+        el("div", {}, el("span", { class: "who" }, m.name), el("span", { class: "role" }, m.role), el("p", { class: "does" }, m.does))));
+      const small = el("span", { class: "face", title: m.name + ", " + m.role }); small.innerHTML = T.svg(m.key); crew.append(small);
+    }
+  })();
+
   // ---------- profile ----------
   async function loadProfile() {
     const { data, error } = await sb.from("profiles").select("display_name, home_city").maybeSingle();
@@ -260,6 +293,7 @@
     if (error) return flash(explain(error), "bad");
     const ul = $("#traveller-list"); ul.replaceChildren();
     const rows = data || [];
+    travelerRows = rows;
     ready.travelers = rows.length; ready.nationality = rows.some((t) => t.nationality); ready.passport = rows.some((t) => t.passport_expires); paintReady();
     for (const t of data || []) {
       ul.append(el("li", {}, el("span", { class: "who" }, [t.first_name, t.last_name].filter(Boolean).join(" ")),
@@ -309,11 +343,16 @@
     const { data, error } = await sb.from("trips").select("id, owner, title, date_from, date_to, status").order("created_at", { ascending: false });
     if (error) return flash(explain(error), "bad");
     trips = data || [];
+    const b = await sb.from("trip_items").select("id, trip_id, payload, created_at").eq("kind", "brief").order("created_at");
+    briefs = {};
+    for (const r of (b.data || [])) briefs[r.trip_id] = { id: r.id, payload: r.payload || {} };
     ready.datedTrip = trips.some((t) => t.owner === user.id && t.date_from && t.date_to); paintReady();
     const ul = $("#trip-list"); ul.replaceChildren();
     for (const t of trips) {
-      ul.append(el("li", {}, el("div", { class: "ticket " + livery(t.id) },
+      const p = (briefs[t.id] || {}).payload || {};
+      ul.append(el("li", {}, el("div", { class: "ticket " + livery(t.id, p.country) },
         el("button", { type: "button", class: "link", onclick: () => openTrip(t.id) }, t.title),
+        stations(p),
         route(t.date_from, t.date_to, t.owner !== user.id ? "shared with you" : ""))));
     }
     if (!trips.length) ul.append(el("li", { class: "empty" }, "No trips yet. Add your first below: a title is enough to start, and dates help the planner."));
@@ -333,20 +372,24 @@
     if (!current) return;
     $("#trip-list-wrap").hidden = true; $("#trip-detail").hidden = false;
     $("#trip-title").textContent = current.title;
-    $("#trip-ticket").className = "ticket " + livery(current.id);
+    const bp = (briefs[current.id] || {}).payload || {};
+    $("#trip-ticket").className = "ticket " + livery(current.id, bp.country);
+    $("#trip-stations").replaceWith(Object.assign(stations(bp), { id: "trip-stations" }));
     $("#trip-dates").replaceWith(Object.assign(route(current.date_from, current.date_to), { id: "trip-dates" }));
     const mine = current.owner === user.id;
     for (const s of ["#share-on", "#share-off", "#share-file", "#trip-delete"]) $(s).disabled = !mine;
     let canWrite = mine;
     if (!mine) { const m = await sb.from("trip_members").select("role").eq("trip_id", current.id).eq("user_id", user.id).maybeSingle(); canWrite = !!(m.data && m.data.role !== "viewer"); }
     $("#item-new").hidden = !canWrite;
+    fillBrief(bp, canWrite);
     await Promise.all([loadItems(), loadShare()]);
   }
   async function loadItems() {
     const { data, error } = await sb.from("trip_items").select("id, kind, payload, created_by, created_at").eq("trip_id", current.id).order("created_at");
     if (error) return flash(explain(error), "bad");
     const ul = $("#item-list"); ul.replaceChildren();
-    for (const i of data || []) {
+    const notes = (data || []).filter((i) => i.kind !== "brief");
+    for (const i of notes) {
       const text = (i.payload && (i.payload.text || i.payload.t)) || JSON.stringify(i.payload);
       const li = el("li", {}, el("span", { class: "tag" }, i.kind), el("span", { class: "grow" }, text));
       if (i.created_by === user.id || current.owner === user.id) li.append(" ", el("button", { type: "button", class: "link", onclick: async () => {
@@ -356,7 +399,7 @@
       } }, "Delete"));
       ul.append(li);
     }
-    if (!(data || []).length) ul.append(el("li", { class: "empty" }, "Nothing yet. Add a note: where you want to go, what matters, what to avoid."));
+    if (!notes.length) ul.append(el("li", { class: "empty" }, "No notes yet. Anything the brief doesn't cover goes here."));
   }
   $("#item-new").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -364,6 +407,55 @@
     const { error } = await sb.from("trip_items").insert({ trip_id: current.id, kind: "note", payload: { text: f.text.value.trim() } });
     if (error) return flash(explain(error), "bad");
     f.reset(); loadItems();
+  });
+
+  // ---------- the trip brief ----------
+  (function fillCountries() {
+    const sel = $("#brief select[name=country]");
+    const opts = COUNTRY_CODES.map((c) => [c, countryName(c)]).sort((a, b) => a[1].localeCompare(b[1]));
+    for (const [c, n] of opts) sel.append(el("option", { value: c }, n));
+  })();
+  function showDateParts() {
+    const m = ($("#brief input[name=date_mode]:checked") || {}).value;
+    $("#brief-flex").hidden = m !== "flexible"; $("#brief-event").hidden = m !== "event";
+  }
+  for (const r of $$("#brief input[name=date_mode]")) r.addEventListener("change", showDateParts);
+  function fillBrief(p, canWrite) {
+    const f = $("#brief");
+    f.from.value = p.from || ""; f.country.value = p.country || ""; f.places.value = placesOf(p).join("\n");
+    for (const r of $$("#brief input[name=date_mode]")) r.checked = r.value === (p.date_mode || "");
+    f.flex_days.value = p.flex_days || ""; f.event_name.value = (p.event && p.event.name) || ""; f.event_date.value = (p.event && p.event.date) || "";
+    for (const r of $$("#brief input[name=purpose]")) r.checked = r.value === (p.purpose || "");
+    f.must.value = p.must || ""; f.avoid.value = p.avoid || "";
+    const who = $("#brief-who"); who.replaceChildren(el("legend", {}, "Who's going"));
+    const going = new Set(Array.isArray(p.who) ? p.who : []);
+    for (const t of travelerRows) who.append(el("label", {}, Object.assign(el("input", { type: "checkbox", name: "who", value: t.id }), { checked: going.has(t.id) }), " " + [t.first_name, t.last_name].filter(Boolean).join(" ")));
+    if (!travelerRows.length) who.append(el("span", { class: "muted small" }, "Add the people going on the Travelers tab, then tick them here."));
+    for (const x of f.elements) x.disabled = !canWrite;
+    showDateParts();
+  }
+  $("#brief").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target, mode = ($("#brief input[name=date_mode]:checked") || {}).value || null;
+    const payload = {
+      v: 1, from: f.from.value.trim() || null, country: f.country.value || null,
+      places: f.places.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 12),
+      date_mode: mode,
+      flex_days: mode === "flexible" && f.flex_days.value ? Math.max(1, Math.min(30, Number(f.flex_days.value))) : null,
+      event: mode === "event" && (f.event_name.value.trim() || f.event_date.value) ? { name: f.event_name.value.trim() || null, date: f.event_date.value || null } : null,
+      who: $$("#brief input[name=who]:checked").map((x) => x.value),
+      purpose: ($("#brief input[name=purpose]:checked") || {}).value || null,
+      must: f.must.value.trim() || null, avoid: f.avoid.value.trim() || null
+    };
+    const have = briefs[current.id];
+    const r = have
+      ? await sb.from("trip_items").update({ payload, updated_at: new Date().toISOString() }).eq("id", have.id)
+      : await sb.from("trip_items").insert({ trip_id: current.id, kind: "brief", payload });
+    if (r.error) return flash(explain(r.error), "bad");
+    flash("Brief saved.", "ok");
+    await loadTrips();
+    $("#trip-ticket").className = "ticket " + livery(current.id, payload.country);
+    $("#trip-stations").replaceWith(Object.assign(stations(payload), { id: "trip-stations" }));
   });
 
   // ---------- share with the planner (link (a)) ----------

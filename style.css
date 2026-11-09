@@ -119,8 +119,8 @@ button.link:hover{background:none;color:var(--ink)}
 .tabs::-webkit-scrollbar{display:none}
 .tabs button{display:flex;align-items:center;gap:8px;background:none;color:var(--muted);border:0;border-bottom:4px solid transparent;border-radius:0;padding:8px 12px 10px 4px;min-height:0;font-weight:500;white-space:nowrap;--c:var(--gray)}
 .tabs button::before{content:"";width:14px;height:14px;border-radius:50%;background:var(--c);flex:none}
-.tabs button:nth-child(1){--c:var(--red)}.tabs button:nth-child(2){--c:var(--orange)}.tabs button:nth-child(3){--c:var(--green)}
-.tabs button:nth-child(4){--c:var(--blue)}.tabs button:nth-child(5){--c:var(--gray)}
+.tabs [data-tab=trips]{--c:var(--red)}.tabs [data-tab=team]{--c:var(--purple)}.tabs [data-tab=profile]{--c:var(--orange)}
+.tabs [data-tab=travellers]{--c:var(--green)}.tabs [data-tab=prefs]{--c:var(--blue)}.tabs [data-tab=data]{--c:var(--gray)}
 .tabs button[aria-selected=true]{color:var(--ink);font-weight:700;border-bottom-color:var(--c)}
 .tabs button:hover{background:none;color:var(--ink)}
 
@@ -161,6 +161,29 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 #trip-detail .ticket{margin:12px 0 8px}
 #trip-title{font:700 2.6rem/1 var(--board);letter-spacing:0;margin:0;text-wrap:balance}
 #trip-back{margin-top:20px}
+
+/* ---------- trip brief and the ticket's stations ---------- */
+.stations{margin-top:6px;font:600 1.15rem/1.25 var(--board);letter-spacing:.01em;color:var(--ink)}
+.stations.empty{color:var(--muted);font-weight:500}
+.brief{margin:16px 0}
+.brief .choice{margin:4px 0}
+.brief select{max-width:none}
+
+/* ---------- the planning team ---------- */
+.team{list-style:none;padding:0;margin:16px 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.team li{background:var(--surface);border:1px solid var(--rule);padding:16px;display:grid;grid-template-columns:72px 1fr;gap:14px;align-items:start}
+.team .face{width:72px;height:72px}.team .face svg,.crew .face svg{display:block;width:100%;height:100%}
+.team .who{font-weight:700;font-size:var(--step-1);display:block}
+.team .role{font-weight:500;color:var(--muted);display:block;margin-bottom:6px}
+.team .does{font-size:var(--step--1);margin:0}
+.team li.lead{grid-column:1/-1;border-top:6px solid var(--ink);grid-template-columns:96px 1fr}
+.team li.lead .face{width:96px;height:96px}
+.team li.inspector{border-top-color:var(--gray)}
+.crew{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0 4px}
+.crew-label{font-weight:500;font-size:var(--step--1);color:var(--muted)}
+#crew{display:flex}
+.crew .face{width:34px;height:34px;border-radius:50%;box-shadow:0 0 0 2px var(--bg);margin-left:-6px}
+.crew .face:first-child{margin-left:0}
 
 /* ---------- consent page ---------- */
 .hero{padding:28px 0 8px}
