@@ -29,19 +29,19 @@
     <p>Before you sign in, please read this.</p>
     <ol class="consent">
       <li><strong>No lawyer has reviewed this.</strong> I'm running the pilot without legal review, only with people I know. If that isn't OK with you, please don't sign up; there's no hard feeling.</li>
-      <li><strong>Where your data sits.</strong> In a database run by Supabase, a US company, in its US East (Northern Virginia) data centre, in a project I own. It is not run by Anthropic.</li>
+      <li><strong>Where your data sits.</strong> In a database run by Supabase, a US company, in its US East (Northern Virginia) data center, in a project I own. It is not run by Anthropic.</li>
       <li><strong>Who can see it.</strong>
         <ul>
-          <li>You see your own data. Other pilot travellers can't see yours unless you add them to a trip; then they see that trip.</li>
+          <li>You see your own data. Other pilot travelers can't see yours unless you add them to a trip; then they see that trip.</li>
           <li><strong>Google</strong> handles sign-in, so it learns that you signed in to the pilot. It sees nothing you enter on the site.</li>
           <li><strong>I can see everything you enter,</strong> as the owner of the database. I'll look only to run the pilot and fix problems.</li>
-          <li><strong>Planning runs in my own Claude account (Anthropic).</strong> When you share a trip and send me the file the site makes, that trip, your travel preferences, and each of your travellers' first name, nationality and passport expiry date go into my Claude chats, and Claude may read it through my account to plan, check and fix the pilot. Anthropic's handling of it follows my account's terms and settings. My Claude account is <span data-cfg="CLAUDE_PLAN">[plan]</span>. Chats <span data-cfg="CHATS_TRAINING">[are / aren't]</span> used to train Anthropic's models.</li>
+          <li><strong>Planning runs in my own Claude account (Anthropic).</strong> When you share a trip and send me the file the site makes, that trip, your travel preferences, and each of your travelers' first name, nationality and passport expiry date go into my Claude chats, and Claude may read it through my account to plan, check and fix the pilot. Anthropic's handling of it follows my account's terms and settings. My Claude account is <span data-cfg="CLAUDE_PLAN">[plan]</span>. Chats <span data-cfg="CHATS_TRAINING">[are / aren't]</span> used to train Anthropic's models.</li>
         </ul></li>
-      <li><strong>What it keeps:</strong> your Google account's email and account ID, and the name and profile-picture link Google sends when you sign in; a display name and home city; your travel preferences; the people you add as travellers (first and last name, nationality, passport expiry date only); your trips and what the planner writes for them; when you shared a trip with the planner; and this agreement.</li>
+      <li><strong>What it keeps:</strong> your Google account's email and account ID, and the name and profile-picture link Google sends when you sign in; a display name and home city; your travel preferences; the people you add as travelers (first and last name, nationality, passport expiry date only); your trips and what the planner writes for them; when you shared a trip with the planner; and this agreement.</li>
       <li><strong>What it never keeps:</strong> passport, visa, Known Traveler or redress numbers; card or bank numbers; passwords or codes; a street address with an apartment or unit number. Please don't type them anywhere on the site. It tries to refuse them automatically, but that check can miss one. Please also keep health details out of notes.</li>
       <li><strong>Backups.</strong> Supabase keeps daily backups for 7 days, so something you delete can stay in a backup for up to 7 days. [If the pilot is still on Supabase's free plan when you sign up: there are no backups, so a fault could lose data, and the site goes offline after about a week of little use until I restart it.] Keep your own copy of anything you need, especially your bookings.</li>
       <li><strong>You're in control.</strong> Download your data (your sign-in record included), or delete it, at any time from the site. To close your sign-in account too, ask me. You can stop at any time.</li>
-      <li><strong>Other people.</strong> If you add someone travelling with you, you confirm they're OK with it.</li>
+      <li><strong>Other people.</strong> If you add someone traveling with you, you confirm they're OK with it.</li>
       <li><strong>What I'll measure:</strong> from your trip, the share of travel by rail, nights in independent places and carbon per person per day; and I'll ask you at the end whether you'd take the trip. I'll keep these figures, without your name, in my planning notes in Claude. Apart from Supabase, Google's sign-in and the planner as above, I won't share your data with anyone.</li>
       <li><strong>When it ends.</strong> At the end of the pilot I'll delete your data unless you ask me to keep it. Either way, I'll delete the Claude chats that hold the trips you shared.</li>
     </ol>
@@ -70,7 +70,7 @@
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="trips" aria-selected="true">Trips</button>
       <button role="tab" data-tab="profile">You</button>
-      <button role="tab" data-tab="travellers">Travellers</button>
+      <button role="tab" data-tab="travellers">Travelers</button>
       <button role="tab" data-tab="prefs">Preferences</button>
       <button role="tab" data-tab="data">Your data</button>
     </nav>
@@ -100,7 +100,7 @@
           <button type="submit">Add note</button>
         </form>
         <h3>Share with the planner</h3>
-        <p class="muted">Sharing lets you make a file of this trip, your preferences and your travellers (first name, nationality and passport expiry only) to send to <span data-cfg="OPERATOR_NAME"></span>. Each file you make is logged below.</p>
+        <p class="muted">Sharing lets you make a file of this trip, your preferences and your travelers (first name, nationality and passport expiry only) to send to <span data-cfg="OPERATOR_NAME"></span>. Each file you make is logged below.</p>
         <p id="share-state"></p>
         <div class="row">
           <button type="button" id="share-on">Share</button>
@@ -124,11 +124,11 @@
     </div>
 
     <div data-panel="travellers" hidden>
-      <h2>Travellers</h2>
+      <h2>Travelers</h2>
       <p class="muted">The people you travel with, you included. Only a passport's expiry date is kept, never its number.</p>
       <ul id="traveller-list" class="list"></ul>
       <form id="traveller-new" class="stack">
-        <h3>Add a traveller</h3>
+        <h3>Add a traveler</h3>
         <div class="row">
           <label class="field">First name <input name="first_name" maxlength="60" required></label>
           <label class="field">Last name <input name="last_name" maxlength="60"></label>
@@ -154,7 +154,7 @@
         <button type="button" id="export-btn">Download my data</button>
         <button type="button" id="delete-btn" class="danger">Delete all my data…</button>
       </div>
-      <p class="muted">Deleting removes your trips, what you wrote on other people's trips, your shares, travellers, preferences, agreement and profile. To close your sign-in account too, ask <span data-cfg="OPERATOR_NAME"></span> (<span data-cfg="CONTACT"></span>).</p>
+      <p class="muted">Deleting removes your trips, what you wrote on other people's trips, your shares, travelers, preferences, agreement and profile. To close your sign-in account too, ask <span data-cfg="OPERATOR_NAME"></span> (<span data-cfg="CONTACT"></span>).</p>
       <button type="button" id="signout-btn" class="secondary">Sign out</button>
     </div>
   </section>

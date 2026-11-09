@@ -25,7 +25,7 @@
 <tr><td>Your sign-in: your Google account's email and account ID, and the name and profile-picture link Google sends when you sign in</td><td>to sign you in</td><td>Supabase's sign-in service, in the same project; in the download as "sign_in" [what its sign-in logs keep, such as times or addresses: not read, a gap]</td></tr>
 <tr><td>A display name and home city (a city, not a street address)</td><td>to address you and plan trips home</td><td>your profile</td></tr>
 <tr><td>Your travel preferences (getting there, where you stay, food, getting around, events, pace, values, budget)</td><td>to plan the way you travel</td><td>your profile</td></tr>
-<tr><td>The people you add as travellers: first and last name, nationality, passport expiry date</td><td>to check entry rules and passport validity</td><td>your profile; the planner gets first name, nationality and passport expiry date, never the last name</td></tr>
+<tr><td>The people you add as travelers: first and last name, nationality, passport expiry date</td><td>to check entry rules and passport validity</td><td>your profile; the planner gets first name, nationality and passport expiry date, never the last name</td></tr>
 <tr><td>Your trips, and what is written on them</td><td>to plan the trip</td><td>the trip; seen by people you add to it</td></tr>
 <tr><td>Shares with the planner, and each time a file of a shared trip is made for the planner</td><td>so you can see when the planner had your trip</td><td>your account</td></tr>
 <tr><td>Your agreement to this notice, with its version and date</td><td>to show you agreed, and to what</td><td>your account</td></tr>
@@ -36,12 +36,12 @@
 <ul>
 <li><strong>You:</strong> everything of yours.</li>
 <li><strong>People you add to a trip:</strong> that trip. Never your profile or your other trips.</li>
-<li><strong>Other pilot travellers:</strong> nothing of yours, unless you add them to a trip.</li>
+<li><strong>Other pilot travelers:</strong> nothing of yours, unless you add them to a trip.</li>
 <li><strong>If someone adds you to their trip:</strong> they and anyone else on it see what you write there. If they share it with the planner, what you wrote goes too, without your name. If they delete the trip, it goes. Editors can change or delete anything on a trip.</li>
 <li><strong><span data-cfg="OPERATOR_NAME">The operator</span>:</strong> everything, as the database's owner, through Supabase's dashboard, and looks only to run the pilot and fix problems.</li>
 <li><strong>The planner (Claude, in <span data-cfg="OPERATOR_NAME">the operator</span>'s Anthropic account):</strong>
 <ul>
-<li>It gets a trip only after you share it and send the file the site makes. The file holds that trip (with what anyone on it wrote), your preferences, and everyone you've added as a traveller, not only those on this trip: first name, nationality and passport expiry date. Never your travellers' last names, and never another trip of yours.</li>
+<li>It gets a trip only after you share it and send the file the site makes. The file holds that trip (with what anyone on it wrote), your preferences, and everyone you've added as a traveler, not only those on this trip: first name, nationality and passport expiry date. Never your travelers' last names, and never another trip of yours.</li>
 <li>Each file made for the planner is logged, and you can see the log on the trip. What the operator sees in the database, or asks Claude to check there, is not logged.</li>
 <li>Stopping sharing stops new files; what is already in the operator's Claude chats stays there until the pilot's end, when they delete those chats.</li>
 <li>The operator may also ask Claude to help run the database itself, for example to check it works or fix a fault, which can show it what is stored.</li>
@@ -53,8 +53,8 @@
 
 <h2>4 · How long, and how you remove it</h2>
 <ul>
-<li><strong>Download:</strong> any time, under "Your data": your sign-in record (email, Google account ID, name, picture link), your profile, preferences, travellers, your trips (with everything on them), your shares and the planner log, your memberships of other people's trips and what you wrote there.</li>
-<li><strong>Delete:</strong> one button removes everything of yours: your trips (with what they hold and who was on them), what you wrote on other people's trips, your memberships of their trips, your shares, travellers, preferences, agreement and profile. Your sign-in account itself is removed by the operator when you ask.</li>
+<li><strong>Download:</strong> any time, under "Your data": your sign-in record (email, Google account ID, name, picture link), your profile, preferences, travelers, your trips (with everything on them), your shares and the planner log, your memberships of other people's trips and what you wrote there.</li>
+<li><strong>Delete:</strong> one button removes everything of yours: your trips (with what they hold and who was on them), what you wrote on other people's trips, your memberships of their trips, your shares, travelers, preferences, agreement and profile. Your sign-in account itself is removed by the operator when you ask.</li>
 <li><strong>At the pilot's end:</strong> deleted unless you ask to keep it, and the operator deletes the Claude chats that hold shared trips.</li>
 <li><strong>What can't be removed from here:</strong> what you send a seller when you book; and, until the pilot's end, what was already sent to the planner and is in the operator's Claude chats. Anthropic's own handling of deleted chats follows its terms. The figures the operator keeps without your name stay in their notes.</li>
 <li><strong>Backups:</strong> Supabase keeps daily backups for 7 days, so something you delete can stay in a backup for up to 7 days. [If still on the free plan when you sign up: no backups, so a fault could lose data, and the site goes offline after about a week of little use until restarted.]</li>
