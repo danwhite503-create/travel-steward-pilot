@@ -1,0 +1,1 @@
+(function(){var C=window.PILOT_CONFIG||{};document.querySelectorAll("[data-cfg]").forEach(function(n){if(C[n.dataset.cfg])n.textContent=C[n.dataset.cfg];});if(/^draft/i.test(C.NOTICE_VERSION||"draft"))document.getElementById("draft-banner").hidden=false;var v=document.getElementById("ver");if(v)v.textContent=C.NOTICE_VERSION||"";})();
