@@ -223,13 +223,15 @@
   });
 
   // ---------- readiness: the essentials and the extras, worked out from what's already entered ----------
-  const ready = { name: false, city: false, nationality: false, passport: false, prefSections: new Set(), travelers: 0, datedTrip: false };
+  // The five essentials (his choice, D-549): what the planner needs to start any trip. Passport dates are
+  // checked per trip instead, where the trip goes abroad (paintDocs), so a trip at home never stalls on them.
+  const ready = { name: false, city: false, traveler: false, prefSections: new Set(), travelers: 0, brief: false, datedTrip: false };
   const ESSENTIALS = [
     ["name", "Display name", "add your display name below"],
     ["city", "Home city", "add your home city below"],
-    ["nationality", "Nationality", "add a traveler with a nationality on the Travelers tab"],
-    ["passport", "Passport expiry", "add a passport expiry date on the Travelers tab"],
-    ["prefs", "A preference", "add at least one line on the Preferences tab"]
+    ["traveler", "A traveler", "add yourself on the Travelers tab"],
+    ["prefs", "A preference", "add at least one line on the Preferences tab"],
+    ["brief", "A trip brief", "start a trip and save its brief on the Trips tab"]
   ];
   function essentialsDone() { return ESSENTIALS.map(([k]) => k === "prefs" ? ready.prefSections.size > 0 : !!ready[k]); }
   function earned() {
@@ -308,7 +310,7 @@
     const ul = $("#traveller-list"); ul.replaceChildren();
     const rows = data || [];
     travelerRows = rows;
-    ready.travelers = rows.length; ready.nationality = rows.some((t) => t.nationality); ready.passport = rows.some((t) => t.passport_expires); paintReady();
+    ready.travelers = rows.length; ready.traveler = rows.length > 0; paintReady();
     for (const t of data || []) {
       ul.append(el("li", {}, el("span", { class: "who" }, [t.first_name, t.last_name].filter(Boolean).join(" ")),
         el("span", { class: "muted grow" }, [t.nationality, t.passport_expires && "passport expires " + fmtDate(t.passport_expires).replace(/^[A-Za-z]{3}, /, "")].filter(Boolean).join(", ")),
@@ -363,7 +365,8 @@
     const pl = await sb.from("trip_items").select("id, trip_id, payload, created_at").eq("kind", "plan").order("created_at");
     plans = {};
     for (const r of (pl.data || [])) plans[r.trip_id] = { id: r.id, payload: r.payload || {} };
-    ready.datedTrip = trips.some((t) => t.owner === user.id && t.date_from && t.date_to); paintReady();
+    ready.datedTrip = trips.some((t) => t.owner === user.id && t.date_from && t.date_to);
+    ready.brief = trips.some((t) => t.owner === user.id && briefs[t.id]); paintReady();
     const ul = $("#trip-list"); ul.replaceChildren();
     for (const t of trips) {
       const p = (briefs[t.id] || {}).payload || {};
@@ -401,7 +404,7 @@
     let canWrite = mine;
     if (!mine) { const m = await sb.from("trip_members").select("role").eq("trip_id", current.id).eq("user_id", user.id).maybeSingle(); canWrite = !!(m.data && m.data.role !== "viewer"); }
     $("#item-new").hidden = !canWrite;
-    fillBrief(bp, canWrite);
+    fillBrief(bp, canWrite); paintDocs(bp);
     await Promise.all([loadItems(), loadShare()]);
   }
   async function loadItems() {
@@ -563,6 +566,21 @@
     return v;
   }
 
+  // ---------- documents for a trip abroad: a reminder, never a blocker ----------
+  // Abroad means the brief's main country differs from a ticked traveler's nationality. A traveler with no
+  // nationality, or no passport expiry date when abroad, gets a line saying what to add.
+  function paintDocs(p) {
+    const box = $("#trip-docs"); if (!box) return; box.replaceChildren();
+    const country = p && p.country, going = new Set(Array.isArray(p && p.who) ? p.who : []);
+    const lines = [];
+    if (country) for (const t of travelerRows.filter((x) => going.has(x.id))) {
+      if (!t.nationality) lines.push(t.first_name + ": add a nationality, so the planner can check the entry rules for " + countryName(country) + ".");
+      else if (t.nationality !== country && !t.passport_expires) lines.push(t.first_name + ": add a passport expiry date. " + countryName(country) + " checks how long a passport must stay valid.");
+    }
+    box.hidden = !lines.length;
+    if (lines.length) box.append(el("h4", {}, "Before you go abroad"), el("ul", {}, ...lines.map((x) => el("li", {}, x))), el("p", { class: "muted small" }, "Add these on the Travelers tab. The planner checks the entry rules for each traveler once the dates are set."));
+  }
+
   // ---------- the trip brief ----------
   (function fillCountries() {
     const sel = $("#brief select[name=country]");
@@ -606,7 +624,7 @@
       ? await sb.from("trip_items").update({ payload, updated_at: new Date().toISOString() }).eq("id", have.id)
       : await sb.from("trip_items").insert({ trip_id: current.id, kind: "brief", payload });
     if (r.error) return flash(explain(r.error), "bad");
-    flash("Brief saved.", "ok");
+    flash("Brief saved.", "ok"); paintDocs(payload);
     await loadTrips();
     $("#trip-ticket").className = "ticket " + livery(current.id, payload.country);
     $("#trip-stations").replaceWith(Object.assign(stations(payload), { id: "trip-stations" }));
