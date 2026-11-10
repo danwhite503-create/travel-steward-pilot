@@ -221,13 +221,28 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .gaps li::before{content:"";position:absolute;left:0;top:12px;width:8px;height:8px;border-radius:50%;border:2px solid var(--muted)}
 .legs{list-style:none;padding:0;margin:8px 0;position:relative}
 .legs::before{content:"";position:absolute;left:21px;top:22px;bottom:22px;width:4px;background:var(--rule)}
-.legs li{display:grid;grid-template-columns:46px 1fr;gap:12px;padding:10px 0}
+.legs>li{display:grid;grid-template-columns:46px 1fr;gap:12px;padding:10px 0}
 .leg-face{width:46px;height:46px;display:block;position:relative;z-index:1;border-radius:50%;box-shadow:0 0 0 3px var(--surface)}
 .leg-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
 .leg-top .day{font:600 .95rem/1 var(--board);color:var(--muted)}
 .leg-title{font:700 1.2rem/1.2 var(--board)}
 .leg-top .price{margin-left:auto;font:600 1.05rem/1 var(--board)}
 .leg-detail{margin:4px 0}
+/* v1.2 plan cards (D-555): short points on the card, the rest behind a tap */
+.leg-points{margin:6px 0 4px;padding-left:18px;font-size:var(--step--1);line-height:1.45}
+.leg-points li{margin:2px 0}
+.plan details.how{margin:6px 0 2px;font-size:var(--step--1);color:var(--muted)}
+.plan details.how summary{cursor:pointer;font-weight:500;color:var(--ink);text-decoration:underline;text-underline-offset:3px;list-style:none}
+.plan details.how summary::-webkit-details-marker{display:none}
+.plan details.how p{margin:6px 0}
+.how-sources{margin:6px 0 0;padding-left:18px}
+.tier-a.small li{padding:4px 0}
+.tier-a.small li{flex-wrap:nowrap}
+.tier-a .fig{margin-left:auto;text-align:right;white-space:nowrap}
+.tradeoffs.small li,.gaps.small li{padding:3px 0 3px 18px}
+.tradeoffs.small li::before{top:11px}
+.gaps.small li::before{top:9px}
+
 .leg-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .plan .leg-foot a.book{display:inline-block;background:var(--ink);color:var(--bg);text-decoration:none;font-weight:500;padding:6px 12px;border-radius:3px;font-size:var(--step--1)}
 .leg-foot .source{font-size:var(--step--1);color:var(--muted)}

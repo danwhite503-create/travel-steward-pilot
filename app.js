@@ -581,7 +581,7 @@
       el("h3", {}, "Your plan"),
       el("span", { class: "plan-status" + (state === "breaks" ? " bad" : checked ? " checked" : "") }, face(checked || state === "breaks" ? "critic" : "steward", "tiny"),
         state === "breaks" ? "Margit: every option breaks a hard rule" :
-        checked ? "Checked by Margit" + (p.inspector && p.inspector.score ? ", " + p.inspector.score : "") : "Draft: Margit hasn't checked it yet")));
+        checked ? "Checked by Margit" + (p.inspector && /^\d+ of \d+$/.test(String(p.inspector.score || "")) ? ", " + p.inspector.score : "") : "Draft: Margit hasn't checked it yet")));
     if (p.summary) box.append(el("p", { class: "plan-summary" }, p.summary));
     if (p.written_at) box.append(el("p", { class: "muted small" }, "Written " + fmtDate(String(p.written_at).slice(0, 10)) + " by Arlo and the team."));
     const opts = p.options.slice(0, 4);
@@ -595,8 +595,10 @@
       el("span", { class: "platform" }, String(o.id || String.fromCharCode(65 + i)).slice(0, 2)), el("span", {}, o.name || "Option " + (i + 1)))));
     box.append(bar, body); show(0);
     const gaps = (Array.isArray(p.gaps) ? p.gaps : []).filter(Boolean);
-    if (gaps.length) box.append(el("h4", {}, "Still open"), el("ul", { class: "gaps" }, ...gaps.map((g) => el("li", {}, String(g)))));
-    if (p.inspector && p.inspector.note) box.append(el("p", { class: "inspector-note" }, face("critic", "tiny"), String(p.inspector.note)));
+    if (gaps.length) box.append(el("h4", {}, "Still open"), el("ul", { class: "gaps small" }, ...gaps.map((g) => el("li", {}, String(g)))));
+    // v1.2: how the inspector checked it sits behind a tap; the verdict stays in the header.
+    if (p.inspector && p.inspector.note) box.append(el("details", { class: "how inspector-how" }, el("summary", {}, "How Margit checked it"),
+      el("p", { class: "inspector-note" }, face("critic", "tiny"), String(p.inspector.note))));
   }
   function optionView(o) {
     const v = el("div", { class: "option" });
@@ -614,10 +616,10 @@
     if (o.cost && num(o.cost.amount) !== null) m.append(el("div", { class: "metric" }, el("span", { class: "big" }, (o.cost.currency || "") + " " + num(o.cost.amount)), el("span", { class: "small muted" }, o.cost.basis || "")));
     v.append(m);
     const ta = (Array.isArray(o.tier_a) ? o.tier_a : []);
-    if (ta.length) v.append(el("h4", {}, "The hard rules"), el("ul", { class: "tier-a" }, ...ta.map((r) =>
-      el("li", { class: r.ok ? "ok" : "bad" }, el("span", { class: "mark" }, r.ok ? "Passes" : "Breaks"), el("span", { class: "grow" }, String(r.rule || "")), r.figure ? el("span", { class: "muted" }, String(r.figure)) : ""))));
+    if (ta.length) v.append(el("h4", {}, "The hard rules"), el("ul", { class: "tier-a small" }, ...ta.map((r) =>
+      el("li", { class: r.ok ? "ok" : "bad" }, el("span", { class: "mark" }, r.ok ? "Passes" : "Breaks"), el("span", { class: "grow" }, String(r.rule || "")), r.figure ? el("span", { class: "muted fig" }, String(r.figure)) : ""))));
     const tr = (Array.isArray(o.tradeoffs) ? o.tradeoffs : []).filter(Boolean);
-    if (tr.length) v.append(el("h4", {}, "What you trade"), el("ul", { class: "tradeoffs" }, ...tr.map((t) => el("li", {}, String(t)))));
+    if (tr.length) v.append(el("h4", {}, "What you trade"), el("ul", { class: "tradeoffs small" }, ...tr.map((t) => el("li", {}, String(t)))));
     const legs = (Array.isArray(o.legs) ? o.legs : []);
     if (legs.length) {
       const ul = el("ol", { class: "legs" });
@@ -626,15 +628,33 @@
         const T = window.TravelTeam, who = T ? (T.TEAM.find((x) => x.key === key) || {}).name : "";
         const li = el("li", {}, face(key, "leg-face"), el("div", { class: "leg-body" },
           el("div", { class: "leg-top" }, g.day ? el("span", { class: "day" }, "Day " + g.day) : "", el("span", { class: "leg-title" }, String(g.title || "")), g.price ? el("span", { class: "price" }, String(g.price)) : ""),
-          g.detail ? el("p", { class: "leg-detail" }, String(g.detail)) : "",
+          ...legBody(g),
           el("div", { class: "leg-foot" }, who ? el("span", { class: "muted small" }, "From " + who) : "",
-            g.book && g.book.url ? extLink(g.book.url, String(g.book.label || "Book on the seller's site"), "book") : "",
-            ...(Array.isArray(g.sources) ? g.sources : []).slice(0, 4).map((s) => extLink(s.url, String(s.title || "Source") + (s.tier ? " (" + s.tier + ")" : ""), "source")))));
+            g.book && g.book.url ? extLink(g.book.url, String(g.book.label || "Book on the seller's site"), "book") : ""),
+          legHow(g)));
         ul.append(li);
       }
       v.append(el("h4", {}, "Day by day"), ul);
     }
     return v;
+  }
+
+  // v1.2 (D-555): a part reads as a few short points; the long detail, the method and the sources sit behind
+  // "How we know". A v1.1 plan (no points) keeps its detail on the card, in smaller text.
+  const strs = (x, n) => (Array.isArray(x) ? x : x ? [x] : []).filter((s) => typeof s === "string" && s.trim()).slice(0, n);
+  function legBody(g) {
+    const pts = strs(g.points, 4);
+    if (pts.length) return [el("ul", { class: "leg-points" }, ...pts.map((t) => el("li", {}, t)))];
+    return g.detail ? [el("p", { class: "leg-detail small" }, String(g.detail))] : [];
+  }
+  function legHow(g) {
+    const pts = strs(g.points, 4), how = strs(g.how, 6), src = (Array.isArray(g.sources) ? g.sources : []).slice(0, 4);
+    const paras = [...(pts.length && g.detail ? [String(g.detail)] : []), ...how];
+    if (!paras.length && !src.length) return "";
+    return el("details", { class: "how" }, el("summary", {}, "How we know"),
+      ...paras.map((t) => el("p", {}, t)),
+      src.length ? el("ul", { class: "how-sources" }, ...src.map((s) => el("li", {}, extLink(s.url, String(s.title || "Source"), "source"),
+        s.tier ? el("span", { class: "muted" }, " · " + String(s.tier)) : ""))) : "");
   }
 
   // Fix 5 (D-550): removing a traveler takes that one id off the owner's briefs. Each brief is re-read just

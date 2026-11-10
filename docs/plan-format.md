@@ -1,5 +1,7 @@
 # The plan on a trip: format v1.1
 
+v1.2 (9 Nov 2026, D-555): a part may carry `points` (one to four short lines, 140 characters each) shown as small bullets on the card, and `how` (text, or up to six paragraphs) shown with its `detail` and `sources` behind a "How we know" tap; without `points` a part shows its `detail` as before, in smaller text. The inspector's `note` sits behind "How Margit checked it", and the header shows a `score` only when it reads "n of m". The writer refuses a price claim ("parity", "no premium", "surge", "barely moves", "same price"…) unless the same sentence gives its basis: a rough comparison with the room not named, or the same room (D-554). `v` stays 1.
+
 v1.1 (9 Nov 2026): an optional `progress` block for the team at work, and status `working` (D-547); status `refused`, with `refusal` and up to two counter-proposals (D-550). `v` stays 1.
 
 A plan is one trip item of kind `plan` on the trip. Its `payload` is the JSON below. The page shows it on the trip; the planner (Claude, through the owner's Supabase dashboard) writes it with `supabase/tools/write_plan.py`. Every text is shown as text, never as HTML. Links must be `https://`.
@@ -32,6 +34,15 @@ A plan is one trip item of kind `plan` on the trip. Its `payload` is the JSON be
   "gaps": [ "Fado venues' December hours not yet published" ]
 }
 ```
+
+A part in v1.2 adds, after `title` and `price`:
+
+```json
+"points": ["Northeast Regional 184 · 5:07 pm → 9:50 pm", "4 h 43 min, coach"],
+"how": ["Read on Amtrak's own site, 9 Nov 2026, 9:00 pm ET.", "Not read yet: fare type and change terms."]
+```
+
+Write points in plain words a friend would use: no tiers, rungs or layer names on the card; those go in `how` or the sources.
 
 `by` names the specialist who did that part: `rail`, `air`, `stay`, `dining`, `events`, `around`, `impact`, `booking`. Options are two to four. The never-kept check runs on the whole row in the database, so a link is refused if it carries a run of 9 or more digits, 1–2 letters followed by 6–9 digits, or "#" followed by a digit: use the operator's page without the token, and say so in the leg's detail.
 
