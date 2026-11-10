@@ -16,7 +16,7 @@
   --bg:#f3f3f1;--surface:#fff;--ink:#000;--muted:#5c5c5c;--rule:#d9d9d6;--sign:#000;--sign-ink:#fff;
   /* subway line colors */
   --red:#ee352e;--orange:#ff6319;--yellow:#fccc0a;--green:#00933c;--blue:#0039a6;--purple:#b933ad;--gray:#808183;
-  --danger:#c4161c;--focus:#fccc0a;
+  --danger:#c4161c;--on-danger:#fff;--focus:#fccc0a;
   /* intercity liveries */
   --it-a:#c8102e;--it-b:#5f6062;--it-ground:#fff;
   --jp-a:#1f4e96;--jp-b:#1f4e96;--jp-ground:#fff;
@@ -28,11 +28,11 @@
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#000;--surface:#141414;--ink:#fff;--muted:#a6a6a6;--rule:#2e2e2e;--sign:#000;--sign-ink:#fff;--danger:#ff6b6b;
+  --bg:#000;--surface:#141414;--ink:#fff;--muted:#a6a6a6;--rule:#2e2e2e;--sign:#000;--sign-ink:#fff;--danger:#ff6b6b;--on-danger:#000;
   --it-ground:#1a1a1a;--jp-ground:#1a1a1a;--es-ground:#1a1a1a;--fr-ground:#1a1a1a;--jp-a:#6c9be0;--fr-a:#7f96c4;--es-a:#a77fd0;
   color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#000;--surface:#141414;--ink:#fff;--muted:#a6a6a6;--rule:#2e2e2e;--danger:#ff6b6b;
+  --bg:#000;--surface:#141414;--ink:#fff;--muted:#a6a6a6;--rule:#2e2e2e;--danger:#ff6b6b;--on-danger:#000;
   --it-ground:#1a1a1a;--jp-ground:#1a1a1a;--es-ground:#1a1a1a;--fr-ground:#1a1a1a;--jp-a:#6c9be0;--fr-a:#7f96c4;--es-a:#a77fd0;color-scheme:dark}
 
 [hidden]{display:none!important}
@@ -366,3 +366,27 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .docs-warn{margin:16px 0;background:var(--surface);border-left:6px solid var(--yellow);padding:12px 14px}
 .docs-warn h4{margin:0 0 6px}
 .docs-warn ul{margin:0 0 6px;padding-left:20px}
+
+/* D-550 fixes. A refused or failing plan reads as a red signal, never as "ready". */
+.plan-chip.bad{background:var(--danger);border-color:var(--danger);color:var(--on-danger)}
+.plan-status.bad{color:var(--danger)}
+.refusal{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:2px solid var(--danger);padding:12px 14px;margin:10px 0}
+.refusal .mark{flex:none;font:700 .8rem/1 var(--sans);text-transform:uppercase;letter-spacing:.05em;background:var(--danger);color:var(--on-danger);padding:4px 7px;border-radius:3px}
+.refusal p{margin:4px 0 0}
+.refusal .figure{font-family:var(--board);font-weight:600;font-size:var(--step-1)}
+.ticket-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ticket-top .link{font-size:var(--step--1)}
+#trip-edit{margin-top:12px}
+.also{display:flex;flex-direction:column;gap:6px;align-items:flex-start;border:0;margin:0;padding:0;min-width:0}
+.also-list{display:flex;flex-direction:column;gap:6px;width:100%}
+.also-row{display:flex;gap:10px;align-items:center;width:100%}
+.also-row select{flex:1;min-width:0}
+#plan-stale{border-left-color:var(--orange)}
+
+/* D-551: one way, joining for part of a trip, a plan out of date on the list. */
+.one-way{flex-basis:100%;margin-top:4px}
+#brief-who .who-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:4px 0}
+#brief-who .part{font-size:var(--step--1);color:var(--muted)}
+#brief-who .part-dates{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:var(--step--1)}
+#brief-who .part-dates input{width:auto;min-width:0}
+.plan-chip.stale{background:var(--orange);border-color:var(--orange);color:#000}

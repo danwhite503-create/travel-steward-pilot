@@ -49,12 +49,25 @@
   // The brief of each trip, by trip id: { id, payload }. Kept as a trip item of kind "brief".
   let briefs = {};
   let plans = {};
+  // What a plan amounts to (D-550): a refusal, or options that all break a hard rule, is never "ready" (D-544(1)).
+  function planState(p) {
+    if (!p) return null;
+    if (p.status === "refused") return "refused";
+    const opts = Array.isArray(p.options) ? p.options : [];
+    const breaks = (o) => (Array.isArray(o.tier_a) ? o.tier_a : []).some((r) => r && r.ok === false);
+    if (opts.length && opts.every(breaks)) return "breaks";
+    if (p.status === "working") return "working";
+    return p.status === "checked" ? "checked" : "draft";
+  }
+  const CHIP = { refused: ["Can't be done as asked", " bad"], breaks: ["Breaks a hard rule", " bad"], working: ["Team at work", ""], checked: ["Plan ready", " checked"], draft: ["Plan in progress", ""] };
   let travelerRows = [];
   function placesOf(p) { return (p && Array.isArray(p.places) ? p.places : []).filter(Boolean); }
   // Where a trip runs, as on a departure board: from, then each place in order.
   function stations(p) {
     const stops = [p.from, ...placesOf(p)].filter(Boolean);
-    return stops.length ? el("div", { class: "stations" }, stops.join(" → ")) : el("div", { class: "stations empty" }, "Brief not started");
+    // A brief with no route yet says so, rather than "not started" (found in the recap recordings).
+    const started = p && Object.keys(p).some((k) => k !== "v" && p[k] !== null && !(Array.isArray(p[k]) && !p[k].length) && p[k] !== "");
+    return stops.length ? el("div", { class: "stations" }, stops.join(" → ")) : el("div", { class: "stations empty" }, started ? "Route not set yet" : "Brief not started");
   }
   // A trip's dates as a short route: departure, a line, return; nights underneath.
   function route(a, b, extra) {
@@ -317,7 +330,9 @@
         el("button", { type: "button", class: "link", onclick: async () => {
           if (!(await confirmBox("Remove " + t.first_name + "?"))) return;
           const r = await sb.from("travellers").delete().eq("id", t.id);
-          r.error ? flash(explain(r.error), "bad") : loadTravellers();
+          if (r.error) return flash(explain(r.error), "bad");
+          await loadTravellers();
+          await dropFromBriefs(t.id);
         } }, "Remove")));
     }
     if (!(data || []).length) ul.append(el("li", { class: "empty" }, "No travelers yet. Add yourself first, then anyone coming with you."));
@@ -356,15 +371,15 @@
 
   // ---------- trips ----------
   async function loadTrips() {
-    const { data, error } = await sb.from("trips").select("id, owner, title, date_from, date_to, status").order("created_at", { ascending: false });
+    const { data, error } = await sb.from("trips").select("id, owner, title, date_from, date_to, status, updated_at").order("created_at", { ascending: false });
     if (error) return flash(explain(error), "bad");
     trips = data || [];
-    const b = await sb.from("trip_items").select("id, trip_id, payload, created_at").eq("kind", "brief").order("created_at");
+    const b = await sb.from("trip_items").select("id, trip_id, payload, created_at, updated_at").eq("kind", "brief").order("created_at");
     briefs = {};
-    for (const r of (b.data || [])) briefs[r.trip_id] = { id: r.id, payload: r.payload || {} };
+    for (const r of (b.data || [])) briefs[r.trip_id] = { id: r.id, payload: r.payload || {}, at: r.updated_at || r.created_at };
     const pl = await sb.from("trip_items").select("id, trip_id, payload, created_at").eq("kind", "plan").order("created_at");
     plans = {};
-    for (const r of (pl.data || [])) plans[r.trip_id] = { id: r.id, payload: r.payload || {} };
+    for (const r of (pl.data || [])) plans[r.trip_id] = { id: r.id, payload: r.payload || {}, at: r.created_at };
     ready.datedTrip = trips.some((t) => t.owner === user.id && t.date_from && t.date_to);
     ready.brief = trips.some((t) => t.owner === user.id && briefs[t.id]); paintReady();
     const ul = $("#trip-list"); ul.replaceChildren();
@@ -373,9 +388,10 @@
       ul.append(el("li", {}, el("div", { class: "ticket " + livery(t.id, p.country) },
         el("button", { type: "button", class: "link", onclick: () => openTrip(t.id) }, t.title),
         stations(p),
-        plans[t.id] ? el("span", { class: "plan-chip" + ((plans[t.id].payload || {}).status === "checked" ? " checked" : "") },
-          { checked: "Plan ready", working: "Team at work" }[(plans[t.id].payload || {}).status] || "Plan in progress") : "",
-        route(t.date_from, t.date_to, t.owner !== user.id ? "shared with you" : ""))));
+        plans[t.id] ? (isStale(t, plans[t.id].payload, plans[t.id].at) && ["checked", "refused"].includes(planState(plans[t.id].payload))
+          ? el("span", { class: "plan-chip stale" }, "Plan out of date")
+          : el("span", { class: "plan-chip" + CHIP[planState(plans[t.id].payload || {})][1] }, CHIP[planState(plans[t.id].payload || {})][0])) : "",
+        route(t.date_from, t.date_to, [p.one_way ? "one way, no return" : "", t.owner !== user.id ? "shared with you" : ""].filter(Boolean).join(", ")))));
     }
     if (!trips.length) ul.append(el("li", { class: "empty" }, "No trips yet. Add your first below: a title is enough to start, and dates help the planner."));
   }
@@ -389,16 +405,41 @@
   });
   $("#trip-back").addEventListener("click", () => { current = null; $("#trip-detail").hidden = true; $("#trip-list-wrap").hidden = false; loadTrips(); });
 
+  function paintTicket() {
+    const bp = (briefs[current.id] || {}).payload || {};
+    $("#trip-title").textContent = current.title;
+    $("#trip-ticket").className = "ticket " + livery(current.id, bp.country);
+    $("#trip-stations").replaceWith(Object.assign(stations(bp), { id: "trip-stations" }));
+    // One way: the trip's end date is the last day there, not a return (review L6).
+    $("#trip-dates").replaceWith(Object.assign(route(current.date_from, current.date_to, bp.one_way ? "one way, no return" : ""), { id: "trip-dates" }));
+  }
+  $("#trip-edit-btn").addEventListener("click", () => {
+    const f = $("#trip-edit"); f.title.value = current.title; f.date_from.value = current.date_from || ""; f.date_to.value = current.date_to || "";
+    f.hidden = false; f.title.focus();
+  });
+  $("#trip-edit-cancel").addEventListener("click", () => { $("#trip-edit").hidden = true; $("#trip-edit-btn").focus(); });
+  $("#trip-edit").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const row = { title: f.title.value.trim(), date_from: f.date_from.value || null, date_to: f.date_to.value || null };
+    const datesMoved = row.date_from !== (current.date_from || null) || row.date_to !== (current.date_to || null);
+    if (!datesMoved && row.title === current.title) { f.hidden = true; $("#trip-edit-btn").focus(); return; }
+    // Only a date change touches the trip's time, so a renamed trip doesn't mark its plan out of date (review L2).
+    if (datesMoved) row.updated_at = new Date().toISOString();
+    const { data, error } = await sb.from("trips").update(row).eq("id", current.id).select("id, updated_at");
+    if (error) return flash(explain(error), "bad");
+    if (Array.isArray(data) && !data.length) return flash("Not saved: only the trip's owner can change it.", "bad");   // review L3
+    if (Array.isArray(data) && data[0] && data[0].updated_at) row.updated_at = data[0].updated_at;   // the store's time (v0.1.4)
+    Object.assign(current, row); f.hidden = true; paintTicket(); paintStale(); flash("Trip updated.", "ok"); $("#trip-edit-btn").focus();
+  });
   async function openTrip(id) {
     current = trips.find((t) => t.id === id);
     if (!current) return;
-    currentPlan = null; shareLive = false;
+    currentPlan = null; currentPlanAt = null; shareLive = false;
+    $("#trip-edit").hidden = true; $("#trip-edit-btn").hidden = current.owner !== user.id;
     $("#trip-list-wrap").hidden = true; $("#trip-detail").hidden = false;
-    $("#trip-title").textContent = current.title;
     const bp = (briefs[current.id] || {}).payload || {};
-    $("#trip-ticket").className = "ticket " + livery(current.id, bp.country);
-    $("#trip-stations").replaceWith(Object.assign(stations(bp), { id: "trip-stations" }));
-    $("#trip-dates").replaceWith(Object.assign(route(current.date_from, current.date_to), { id: "trip-dates" }));
+    paintTicket();
     const mine = current.owner === user.id;
     for (const s of ["#share-on", "#share-off", "#share-file", "#trip-delete"]) $(s).disabled = !mine;
     let canWrite = mine;
@@ -408,13 +449,14 @@
     await Promise.all([loadItems(), loadShare()]);
   }
   async function loadItems() {
-    const { data, error } = await sb.from("trip_items").select("id, kind, payload, created_by, created_at").eq("trip_id", current.id).order("created_at");
+    const { data, error } = await sb.from("trip_items").select("id, kind, payload, created_by, created_at, updated_at").eq("trip_id", current.id).order("created_at");
     if (error) return flash(explain(error), "bad");
     const ul = $("#item-list"); ul.replaceChildren();
     const notes = (data || []).filter((i) => i.kind !== "brief" && i.kind !== "plan");
     const planItem = (data || []).filter((i) => i.kind === "plan").pop();
     currentPlan = planItem ? planItem.payload || {} : null;
-    renderPlan(currentPlan); paintWork();
+    currentPlanAt = planItem ? planItem.created_at : null;
+    renderPlan(currentPlan); paintWork(); paintStale();
     // With a plan on the trip, the brief folds under its heading; without one, it stays open.
     $("#brief-wrap").open = !planItem;
     for (const i of notes) {
@@ -440,7 +482,21 @@
   // ---------- the team at work (docs/plan-format.md, v1.1 progress) ----------
   // Shown only from what the planner wrote. Nothing moves unless an update says someone is working,
   // and an update older than 30 minutes stops the motion and says so.
-  let currentPlan = null, shareLive = false;
+  let currentPlan = null, currentPlanAt = null, shareLive = false;
+  // Fix 4 (D-550): a brief or trip changed after the plan was written makes the plan out of date; say so.
+  function isStale(trip, plan, planAt) {
+    const opts = plan && Array.isArray(plan.options) ? plan.options : [];
+    const at = Date.parse(planAt || ""), br = briefs[trip.id];
+    const changed = [br && Date.parse(br.at || ""), Date.parse(trip.updated_at || "")].filter((t) => !isNaN(t));
+    return !!((opts.length || planState(plan) === "refused") && !isNaN(at) && changed.some((t) => t > at + 1000));
+  }
+  function paintStale() {
+    const box = $("#plan-stale"); if (!box || !current) return; box.replaceChildren();
+    const stale = isStale(current, currentPlan, currentPlanAt);
+    box.hidden = !stale;
+    if (stale) box.append(el("h4", {}, "This plan is out of date"),
+      el("p", {}, "The trip or its brief changed after the plan was written (" + when(currentPlanAt) + "). Send the trip to the planner again for a plan that matches."));
+  }
   const STALE_MS = 30 * 60e3;
   const STATES = { queued: "Queued", working: "Working", waiting: "Waiting on you", done: "Done" };
   function when(iso) {
@@ -452,13 +508,14 @@
     const T = window.TravelTeam; if (!T || !current) return;
     const pr = currentPlan && currentPlan.progress;
     const teams = pr && Array.isArray(pr.teams) ? pr.teams.filter((x) => x && T.TEAM.some((m) => m.key === x.key) && STATES[x.state]) : [];
-    if (!teams.length || (currentPlan && currentPlan.status === "checked")) {
+    const finished = currentPlan && (currentPlan.status === "checked" || currentPlan.status === "refused");
+    if (!teams.length || finished) {
       // No update from the planner: say plainly where the trip stands, and show the team without motion.
       const faces = el("span", { class: "crew-faces" });
       for (const m of T.TEAM) { const f = el("span", { class: "face", title: m.name + ", " + m.role }); f.innerHTML = T.svg(m.key); faces.append(f); }
-      const line = currentPlan && currentPlan.status === "checked" ? "The team has finished this plan." :
+      const line = finished ? (currentPlan.status === "refused" ? "The team has answered: it can't be done as asked. See what could work instead." : "The team has finished this plan.") :
         shareLive ? "Queued with Arlo. The team starts when the planner picks it up, and you'll see who's working here." :
-        "Share this trip with the planner (below) to start. You'll see who's working on it here.";
+        "Send this trip to the planner (below) to start. You'll see who's working on it here.";
       box.append(el("div", { class: "idle" }, el("div", { class: "crew" }, el("span", { class: "crew-label" }, "Your team"), faces), el("p", { class: "muted small" }, line)));
       return;
     }
@@ -504,12 +561,26 @@
   const num = (x, d) => (typeof x === "number" && isFinite(x) ? x.toLocaleString("en-US", { maximumFractionDigits: d || 0 }) : null);
   function renderPlan(p) {
     const box = $("#plan"); box.replaceChildren();
-    if (!p || !Array.isArray(p.options) || !p.options.length) { box.hidden = true; return; }
+    const state = planState(p);
+    if (state === "refused" && p.refusal) {
+      // A refusal: what can't be done and by how much, then what could work instead (the counter-proposal).
+      box.hidden = false;
+      const r = p.refusal;
+      box.append(el("div", { class: "plan-head" }, el("h3", {}, "Can't be done as asked"), el("span", { class: "plan-status bad" }, face("critic", "tiny"), "Checked by Margit")),
+        el("div", { class: "refusal" }, el("span", { class: "mark" }, "Breaks"), el("div", {},
+          el("strong", {}, String(r.rule || "")), r.figure ? el("p", { class: "figure" }, String(r.figure)) : "", r.why ? el("p", {}, String(r.why)) : "")));
+      if (p.summary) box.append(el("p", { class: "plan-summary" }, p.summary));
+      if (!Array.isArray(p.options) || !p.options.length) { box.append(el("p", { class: "muted" }, "No version of this trip passes the hard rules yet.")); return; }
+      box.append(el("h4", {}, "What could work instead"));
+    } else if (!p || !Array.isArray(p.options) || !p.options.length) { box.hidden = true; return; }
     box.hidden = false;
-    const checked = p.status === "checked";
-    box.append(el("div", { class: "plan-head" },
+    if (state === "breaks") box.append(el("div", { class: "refusal" }, el("span", { class: "mark" }, "Not finished"),
+      el("p", {}, "Every option here breaks a hard rule, so this plan doesn't count as finished. The planner owes you a version that passes, or a refusal with what would.")));
+    const checked = p.status === "checked" || state === "refused";
+    if (state !== "refused") box.append(el("div", { class: "plan-head" },
       el("h3", {}, "Your plan"),
-      el("span", { class: "plan-status" + (checked ? " checked" : "") }, face(checked ? "critic" : "steward", "tiny"),
+      el("span", { class: "plan-status" + (state === "breaks" ? " bad" : checked ? " checked" : "") }, face(checked || state === "breaks" ? "critic" : "steward", "tiny"),
+        state === "breaks" ? "Margit: every option breaks a hard rule" :
         checked ? "Checked by Margit" + (p.inspector && p.inspector.score ? ", " + p.inspector.score : "") : "Draft: Margit hasn't checked it yet")));
     if (p.summary) box.append(el("p", { class: "plan-summary" }, p.summary));
     if (p.written_at) box.append(el("p", { class: "muted small" }, "Written " + fmtDate(String(p.written_at).slice(0, 10)) + " by Arlo and the team."));
@@ -566,17 +637,46 @@
     return v;
   }
 
+  // Fix 5 (D-550): removing a traveler takes that one id off the owner's briefs. Each brief is re-read just
+  // before the write and only its `who` changes, so a co-editor's other edits are kept (review H1). Ids the
+  // owner can't see (an editor's travelers) are never touched (review M1).
+  async function dropFromBriefs(travelerId) {
+    for (const t of trips.filter((x) => x.owner === user.id && briefs[x.id])) {
+      const cur = await sb.from("trip_items").select("id, payload").eq("id", briefs[t.id].id).maybeSingle();
+      if (cur.error || !cur.data) continue;
+      const p = cur.data.payload || {};
+      const inParts = p.parts && typeof p.parts === "object" && travelerId in p.parts;
+      if (!(Array.isArray(p.who) && p.who.includes(travelerId)) && !inParts) continue;
+      const parts = inParts ? Object.fromEntries(Object.entries(p.parts).filter(([k]) => k !== travelerId)) : p.parts;
+      const payload = Object.assign({}, p, { who: (p.who || []).filter((w) => w !== travelerId), parts: parts && Object.keys(parts).length ? parts : null });
+      const w = await sb.from("trip_items").update({ payload }).eq("id", cur.data.id);
+      if (w.error) { flash("Couldn't update the brief of “" + t.title + "”: " + explain(w.error), "bad"); continue; }
+      briefs[t.id].payload = payload;
+    }
+    if (current && briefs[current.id]) { fillBrief(briefs[current.id].payload, !$("#brief button[type=submit]").disabled); paintDocs(briefs[current.id].payload); }
+  }
+
   // ---------- documents for a trip abroad: a reminder, never a blocker ----------
   // Abroad means the brief's main country differs from a ticked traveler's nationality. A traveler with no
   // nationality, or no passport expiry date when abroad, gets a line saying what to add.
+  const andList = (xs) => xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1];
+  function countriesOf(p) { return [...new Set([p && p.country, ...((p && Array.isArray(p.also)) ? p.also : [])].filter(Boolean))]; }
   function paintDocs(p) {
     const box = $("#trip-docs"); if (!box) return; box.replaceChildren();
-    const country = p && p.country, going = new Set(Array.isArray(p && p.who) ? p.who : []);
-    const lines = [];
-    if (country) for (const t of travelerRows.filter((x) => going.has(x.id))) {
-      if (!t.nationality) lines.push(t.first_name + ": add a nationality, so the planner can check the entry rules for " + countryName(country) + ".");
-      else if (t.nationality !== country && !t.passport_expires) lines.push(t.first_name + ": add a passport expiry date. " + countryName(country) + " checks how long a passport must stay valid.");
+    const cs = countriesOf(p), going = new Set(Array.isArray(p && p.who) ? p.who : []);
+    // Travelers who need the same thing are named together, one line per need (D-550).
+    const need = {};
+    if (cs.length) for (const t of travelerRows.filter((x) => going.has(x.id))) {
+      let key = null;
+      if (!t.nationality) key = "nat|" + cs.join(",");
+      else { const abroad = cs.filter((c) => c !== t.nationality); if (abroad.length && !t.passport_expires) key = "pp|" + abroad.join(","); }
+      if (key) (need[key] = need[key] || []).push(t.first_name);
     }
+    const lines = Object.entries(need).map(([k, who]) => {
+      const [kind, list] = k.split("|"), names = andList(list.split(",").map(countryName));
+      return kind === "nat" ? andList(who) + ": add " + (who.length > 1 ? "nationalities" : "a nationality") + ", so the planner can check the entry rules for " + names + "."
+        : andList(who) + ": add " + (who.length > 1 ? "passport expiry dates" : "a passport expiry date") + ". " + names + " " + (list.includes(",") ? "check" : "checks") + " how long a passport must stay valid.";
+    });
     box.hidden = !lines.length;
     if (lines.length) box.append(el("h4", {}, "Before you go abroad"), el("ul", {}, ...lines.map((x) => el("li", {}, x))), el("p", { class: "muted small" }, "Add these on the Travelers tab. The planner checks the entry rules for each traveler once the dates are set."));
   }
@@ -589,33 +689,86 @@
   })();
   function showDateParts() {
     const m = ($("#brief input[name=date_mode]:checked") || {}).value;
-    $("#brief-flex").hidden = m !== "flexible"; $("#brief-event").hidden = m !== "event";
+    // An event can have flexible days around it too (D-551; found in the test-trip runs, N5).
+    $("#brief-flex").hidden = m !== "flexible" && m !== "event"; $("#brief-event").hidden = m !== "event";
+    $("#flex-label").textContent = m === "event" ? "Days either side of the event, if flexible" : "Days either way";
   }
   for (const r of $$("#brief input[name=date_mode]")) r.addEventListener("change", showDateParts);
+  function alsoRow(code) {
+    const sel = el("select", { name: "also", "aria-label": "Also visiting" }, el("option", { value: "" }, "Choose a country"));
+    for (const o of $("#brief select[name=country]").options) if (o.value) sel.append(el("option", { value: o.value }, o.textContent));
+    sel.value = code || "";
+    const row = el("div", { class: "also-row" }, sel, el("button", { type: "button", class: "link", "aria-label": "Remove this country", onclick: () => { row.remove(); $("#brief-also-add").hidden = false; $("#brief-also-add").focus(); } }, "Remove"));
+    $("#brief-also-list").append(row);
+    $("#brief-also-add").hidden = $$("#brief-also-list select").length >= 4;
+  }
+  $("#brief-also-add").addEventListener("click", () => alsoRow(""));
   function fillBrief(p, canWrite) {
     const f = $("#brief");
+    $("#brief-also-list").replaceChildren(); $("#brief-also-add").hidden = false;
+    for (const c of (Array.isArray(p.also) ? p.also : [])) alsoRow(c);
     f.from.value = p.from || ""; f.country.value = p.country || ""; f.places.value = placesOf(p).join("\n");
     for (const r of $$("#brief input[name=date_mode]")) r.checked = r.value === (p.date_mode || "");
-    f.flex_days.value = p.flex_days || ""; f.event_name.value = (p.event && p.event.name) || ""; f.event_date.value = (p.event && p.event.date) || "";
+    f.flex_days.value = p.flex_days || ""; f.one_way.checked = !!p.one_way; f.event_name.value = (p.event && p.event.name) || ""; f.event_date.value = (p.event && p.event.date) || "";
     for (const r of $$("#brief input[name=purpose]")) r.checked = r.value === (p.purpose || "");
     f.must.value = p.must || ""; f.avoid.value = p.avoid || "";
     const who = $("#brief-who"); who.replaceChildren(el("legend", {}, "Who's going"));
-    const going = new Set(Array.isArray(p.who) ? p.who : []);
-    for (const t of travelerRows) who.append(el("label", {}, Object.assign(el("input", { type: "checkbox", name: "who", value: t.id }), { checked: going.has(t.id) }), " " + [t.first_name, t.last_name].filter(Boolean).join(" ")));
+    const going = new Set(Array.isArray(p.who) ? p.who : []);   // a removed traveler's id simply finds no box (fix 5)
+    const parts = (p.parts && typeof p.parts === "object") ? p.parts : {};
+    for (const t of travelerRows) {
+      // Joining for part of the trip (D-551; test-trip run N3): a tick and two dates, shown once the person is going.
+      const pt = parts[t.id] || null;
+      const box = Object.assign(el("input", { type: "checkbox", name: "who", value: t.id }), { checked: going.has(t.id) });
+      const full = [t.first_name, t.last_name].filter(Boolean).join(" ");
+      const partBox = Object.assign(el("input", { type: "checkbox", name: "part", value: t.id, "aria-label": full + ": part of the trip only" }), { checked: !!pt });
+      const from = Object.assign(el("input", { type: "date", name: "part_from", "aria-label": full + " joins on" }), { value: (pt && pt.from) || "" });
+      const to = Object.assign(el("input", { type: "date", name: "part_to", "aria-label": full + " leaves on" }), { value: (pt && pt.to) || "" });
+      for (const d of [from, to]) { if (current.date_from) d.min = current.date_from; if (current.date_to) d.max = current.date_to; }
+      const dates = el("span", { class: "part-dates" }, "from ", from, " to ", to);
+      const partLab = el("label", { class: "part" }, partBox, " part of the trip");
+      const row = el("div", { class: "who-row", "data-id": t.id, "data-name": full }, el("label", {}, box, " " + [t.first_name, t.last_name].filter(Boolean).join(" ")), partLab, dates);
+      const sync = () => { partLab.hidden = !box.checked; dates.hidden = !box.checked || !partBox.checked; };
+      box.addEventListener("change", sync); partBox.addEventListener("change", sync); sync();
+      who.append(row);
+    }
     if (!travelerRows.length) who.append(el("span", { class: "muted small" }, "Add the people going on the Travelers tab, then tick them here."));
     for (const x of f.elements) x.disabled = !canWrite;
     showDateParts();
   }
+  // Part-of-trip dates, checked before saving (review L5): both dates, in order, inside the trip's dates.
+  function partsOf() {
+    const out = {}, lo = current.date_from || "", hi = current.date_to || "";
+    for (const row of $$("#brief-who .who-row")) {
+      const id = row.dataset.id, q = (n) => row.querySelector("input[name=" + n + "]"), name = row.dataset.name;
+      if (!q("who").checked || !q("part").checked) continue;
+      const from = q("part_from").value || null, to = q("part_to").value || null;
+      if (!from || !to) throw new Error("Add both dates for " + name + ", or untick 'part of the trip'.");
+      if (from > to) throw new Error(name + "'s dates are in the wrong order.");
+      if ((lo && from < lo) || (hi && to > hi)) throw new Error(name + "'s dates fall outside the trip's dates.");
+      out[id] = { from, to };
+    }
+    return out;
+  }
   $("#brief").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = e.target, mode = ($("#brief input[name=date_mode]:checked") || {}).value || null;
+    let parts;
+    try { parts = partsOf(); } catch (err) { return flash("Not saved: " + err.message, "bad"); }
+    // A co-editor sees only their own travelers: keep the owner's entries they can't see (review M3).
+    const prev = (briefs[current.id] || {}).payload || {}, shown = new Set(travelerRows.map((x) => x.id));
+    const keepUnseen = current.owner !== user.id;
+    const who = [...$$("#brief input[name=who]:checked").map((x) => x.value), ...(keepUnseen && Array.isArray(prev.who) ? prev.who.filter((w) => !shown.has(w)) : [])];
+    if (keepUnseen && prev.parts && typeof prev.parts === "object") for (const [k, v] of Object.entries(prev.parts)) if (!shown.has(k)) parts[k] = v;
     const payload = {
       v: 1, from: f.from.value.trim() || null, country: f.country.value || null,
+      also: [...new Set($$("#brief-also-list select").map((x) => x.value).filter((c) => c && c !== f.country.value))].slice(0, 4),
       places: f.places.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 12),
       date_mode: mode,
-      flex_days: mode === "flexible" && f.flex_days.value ? Math.max(1, Math.min(30, Number(f.flex_days.value))) : null,
+      flex_days: (mode === "flexible" || mode === "event") && f.flex_days.value ? Math.max(1, Math.min(30, Number(f.flex_days.value))) : null,
+      one_way: f.one_way.checked || null,
+      parts: Object.keys(parts).length ? parts : null,
       event: mode === "event" && (f.event_name.value.trim() || f.event_date.value) ? { name: f.event_name.value.trim() || null, date: f.event_date.value || null } : null,
-      who: $$("#brief input[name=who]:checked").map((x) => x.value),
+      who,
       purpose: ($("#brief input[name=purpose]:checked") || {}).value || null,
       must: f.must.value.trim() || null, avoid: f.avoid.value.trim() || null
     };
@@ -626,8 +779,7 @@
     if (r.error) return flash(explain(r.error), "bad");
     flash("Brief saved.", "ok"); paintDocs(payload);
     await loadTrips();
-    $("#trip-ticket").className = "ticket " + livery(current.id, payload.country);
-    $("#trip-stations").replaceWith(Object.assign(stations(payload), { id: "trip-stations" }));
+    paintTicket(); paintStale();
   });
 
   // ---------- share with the planner (link (a)) ----------
@@ -635,28 +787,33 @@
     const s = await sb.from("planner_shares").select("id, shared_at, revoked_at").eq("trip_id", current.id).is("revoked_at", null);
     const live = !s.error && (s.data || []).length > 0;
     shareLive = live; paintWork();
-    $("#share-state").textContent = live ? "Shared with the planner since " + fmtDate(s.data[0].shared_at.slice(0, 10)) + "." : "Not shared.";
+    $("#share-state").textContent = live ? "Sent to the planner on " + fmtDate(s.data[0].shared_at.slice(0, 10)) + ". If you didn't email the file yet, make it again below." : "Not sent yet.";
     $("#share-on").hidden = live; $("#share-file").hidden = !live; $("#share-off").hidden = !live;
     const r = await sb.from("planner_reads").select("how, read_at").eq("trip_id", current.id).order("read_at", { ascending: false });
     const ul = $("#read-log"); ul.replaceChildren();
     for (const x of (r.data || [])) ul.append(el("li", {}, x.read_at.replace("T", " ").slice(0, 16) + " UTC: " + (x.how === "export" ? "file made for the planner" : x.how)));
     if (!(r.data || []).length) ul.append(el("li", { class: "empty" }, "No files made yet."));
   }
+  // One step: record the share, then make the file to email (D-550, fix 3).
+  async function makeFile() {
+    const { data, error } = await sb.rpc("pilot_export_trip", { t: current.id });
+    if (error) { loadShare(); return flash(explain(error), "bad"); }
+    download("trip-for-planner-" + current.id.slice(0, 8) + ".json", data);
+    flash("File made. Email it to " + (CFG.OPERATOR_NAME || "the planner") + ": the planner starts when it arrives.", "ok");
+    loadShare();
+  }
   $("#share-on").addEventListener("click", async () => {
-    const { error } = await sb.from("planner_shares").insert({ trip_id: current.id });
-    error ? flash(explain(error), "bad") : loadShare();
+    if (!shareLive) {   // already shared (a file failed earlier): don't record a second share (review L7)
+      const { error } = await sb.from("planner_shares").insert({ trip_id: current.id });
+      if (error) return flash(explain(error), "bad");
+    }
+    await makeFile();
   });
   $("#share-off").addEventListener("click", async () => {
     const { error } = await sb.from("planner_shares").update({ revoked_at: new Date().toISOString() }).eq("trip_id", current.id).is("revoked_at", null);
     error ? flash(explain(error), "bad") : loadShare();
   });
-  $("#share-file").addEventListener("click", async () => {
-    const { data, error } = await sb.rpc("pilot_export_trip", { t: current.id });
-    if (error) return flash(explain(error), "bad");
-    download("trip-for-planner-" + current.id.slice(0, 8) + ".json", data);
-    flash("File made. Send it to " + (CFG.OPERATOR_NAME || "the planner") + ".", "ok");
-    loadShare();
-  });
+  $("#share-file").addEventListener("click", makeFile);
   $("#trip-delete").addEventListener("click", async () => {
     if (!(await confirmBox("Delete “" + current.title + "” and everything on it? This can't be undone.", true))) return;
     const { error } = await sb.from("trips").delete().eq("id", current.id);

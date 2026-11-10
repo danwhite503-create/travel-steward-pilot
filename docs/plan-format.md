@@ -1,6 +1,6 @@
 # The plan on a trip: format v1.1
 
-v1.1 (9 Nov 2026): an optional `progress` block for the team at work, and status `working` (D-547). `v` stays 1.
+v1.1 (9 Nov 2026): an optional `progress` block for the team at work, and status `working` (D-547); status `refused`, with `refusal` and up to two counter-proposals (D-550). `v` stays 1.
 
 A plan is one trip item of kind `plan` on the trip. Its `payload` is the JSON below. The page shows it on the trip; the planner (Claude, through the owner's Supabase dashboard) writes it with `supabase/tools/write_plan.py`. Every text is shown as text, never as HTML. Links must be `https://`.
 
@@ -50,3 +50,23 @@ While the planner works, the plan item may carry who is working and on what. The
 ```
 
 `key` is one of the team: `steward`, `critic`, or a specialist above. `state` is `queued`, `working`, `waiting` (on the traveler) or `done`. `activity` is plain words, 300 characters at most; `done` and `of` go together. `write_plan.py --progress PROGRESS.json TRIP_ID` writes only this block (adding a `working` plan with no options if the trip has none), and touches nothing else.
+
+## A refusal (`refused`, v1.1)
+
+When no version of the trip as asked passes the hard rules, the plan is a refusal, never a "checked" plan whose options all break Tier A (D-544(1)). The page shows "Can't be done as asked", the rule and its figure, then the counter-proposals under "What could work instead".
+
+```json
+{ "v": 1, "status": "refused",
+  "refusal": { "rule": "Carbon ceiling per person per day", "figure": "30% over at 4 nights", "why": "Two transatlantic flights over few days." },
+  "options": [ { "id": "A", "name": "Seven nights", "counter": true, "tier_a": [ { "rule": "Carbon ceiling per person per day", "ok": true, "figure": "under" } ],
+                 "tradeoffs": [ "Three more nights away" ], "legs": [] } ],
+  "inspector": { "result": "pass", "note": "…" } }
+```
+
+`refusal.rule` and `refusal.figure` are required; zero to two counter-proposals, each passing every Tier A check. `write_plan.py` refuses a `checked` plan whose every option breaks a hard rule.
+
+## The brief, as the planner reads it (D-550, D-551)
+
+The trip item of kind `brief` the traveler fills in. Fields: `from`; `country` (the main one) and `also` (up to four more); `places` (in order); `date_mode` (`fixed`, `flexible`, `event`, `open`) with `flex_days` (for `flexible` and `event`) and `event` `{name, date}`; `one_way` (true: no return leg; the trip's end date is the last day there); `who` and `parts`; `purpose` (`leisure`, `work`, `mix`); `must`; `avoid`.
+
+In the store, `who` holds traveler ids and `parts` maps an id to `{from, to}` for anyone joining for part of the trip. From store v0.1.4 the planner file gives `who` as `[{name, from, to}]` instead: first names, the dates only for a part of the trip, removed travelers and other people's ids dropped, and no `parts`. Before v0.1.4 the file carries the ids as stored.

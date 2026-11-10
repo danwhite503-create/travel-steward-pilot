@@ -111,10 +111,19 @@
       <div id="trip-detail" hidden>
         <button type="button" class="link" id="trip-back">← All trips</button>
         <div id="trip-ticket" class="ticket">
-          <h2 id="trip-title"></h2>
+          <div class="ticket-top"><h2 id="trip-title"></h2><button type="button" class="link" id="trip-edit-btn">Edit trip</button></div>
           <div id="trip-stations" class="stations"></div>
           <div id="trip-dates" class="route"></div>
         </div>
+        <form id="trip-edit" class="panel stack" hidden>
+          <label class="field">Title <input name="title" maxlength="120" required></label>
+          <div class="row">
+            <label class="field">From <input type="date" name="date_from"></label>
+            <label class="field">To <input type="date" name="date_to"></label>
+          </div>
+          <div class="row"><button type="submit">Save trip</button><button type="button" class="secondary" id="trip-edit-cancel">Cancel</button></div>
+        </form>
+        <section id="plan-stale" class="docs-warn" hidden aria-label="Plan out of date"></section>
         <section id="trip-docs" class="docs-warn" hidden aria-label="Travel documents"></section>
         <section id="work" class="work" aria-label="Your team on this trip"></section>
         <section id="plan" class="plan" hidden aria-label="Your plan"></section>
@@ -126,6 +135,11 @@
             <label class="field">Leaving from <input name="from" maxlength="80" autocomplete="off"></label>
             <label class="field">Main country <select name="country"><option value="">Choose a country</option></select></label>
           </div>
+          <fieldset class="also" id="brief-also">
+            <legend class="muted small">Also visiting</legend>
+            <div id="brief-also-list" class="also-list"></div>
+            <button type="button" class="link" id="brief-also-add">+ Add a country</button>
+          </fieldset>
           <label class="field">Where to: one place per line, in order if you know it <textarea name="places" rows="3" maxlength="600"></textarea></label>
           <fieldset class="choice" id="brief-dates">
             <legend>Dates</legend>
@@ -133,15 +147,17 @@
             <label><input type="radio" name="date_mode" value="flexible"> Flexible by a few days</label>
             <label><input type="radio" name="date_mode" value="event"> Built around an event</label>
             <label><input type="radio" name="date_mode" value="open"> Not set yet</label>
+            <label class="one-way"><input type="checkbox" name="one_way"> One way: no return trip</label>
           </fieldset>
-          <div class="row" id="brief-flex" hidden>
-            <label class="field">Days either way <input type="number" name="flex_days" min="1" max="30"></label>
-          </div>
           <div class="row" id="brief-event" hidden>
             <label class="field">The event <input name="event_name" maxlength="120"></label>
             <label class="field">Its date <input type="date" name="event_date"></label>
           </div>
+          <div class="row" id="brief-flex" hidden>
+            <label class="field"><span id="flex-label">Days either way</span> <input type="number" name="flex_days" min="1" max="30"></label>
+          </div>
           <fieldset class="choice" id="brief-who"><legend>Who's going</legend></fieldset>
+          <p class="muted small" id="brief-who-note">Tick "part of the trip" for anyone joining or leaving partway, with their dates.</p>
           <fieldset class="choice" id="brief-purpose">
             <legend>Purpose</legend>
             <label><input type="radio" name="purpose" value="leisure"> Time off</label>
@@ -159,12 +175,12 @@
           <label class="field">Add a note for the planner <textarea name="text" rows="3" maxlength="2000" required></textarea></label>
           <button type="submit">Add note</button>
         </form>
-        <h3>Share with the planner</h3>
-        <p class="muted">Sharing lets you make a file of this trip, your preferences and your travelers (first name, nationality and passport expiry only) to send to <span data-cfg="OPERATOR_NAME"></span>. Each file you make is logged below.</p>
+        <h3>Send to the planner</h3>
+        <p class="muted">Sending makes a file of this trip, your preferences and your travelers (first name, nationality and passport expiry only). Email the file to <span data-cfg="OPERATOR_NAME"></span>: the planner starts when it arrives, and you'll see the team at work above. Each file is logged below.</p>
         <p id="share-state"></p>
         <div class="row">
-          <button type="button" id="share-on">Share</button>
-          <button type="button" id="share-file" hidden>Make the file to send</button>
+          <button type="button" id="share-on">Send to the planner</button>
+          <button type="button" id="share-file" hidden>Make the file again</button>
           <button type="button" id="share-off" class="secondary" hidden>Stop sharing</button>
         </div>
         <h4>Planner log</h4>
