@@ -405,3 +405,5 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 #brief-who .part-dates{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:var(--step--1)}
 #brief-who .part-dates input{width:auto;min-width:0}
 .plan-chip.stale{background:var(--orange);border-color:var(--orange);color:#000}
+.place-add{gap:.5rem;align-items:center}
+.place-add input{flex:1;min-width:0}

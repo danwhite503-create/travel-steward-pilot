@@ -11,6 +11,7 @@
 <script src="vendor/supabase-js-2.45.4/supabase.js"></script>
 <script src="avatar.js" defer></script>
 <script src="team.js" defer></script>
+<script src="cities.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
@@ -132,7 +133,7 @@
         <form id="brief" class="brief stack">
           <p class="muted small">What the planner needs to start. Fill in what you know and leave the rest.</p>
           <div class="row">
-            <label class="field">Leaving from <input name="from" maxlength="80" autocomplete="off"></label>
+            <label class="field">Leaving from <input name="from" maxlength="80" autocomplete="off" list="city-list"></label>
             <label class="field">Main country <select name="country"><option value="">Choose a country</option></select></label>
           </div>
           <fieldset class="also" id="brief-also">
@@ -140,14 +141,27 @@
             <div id="brief-also-list" class="also-list"></div>
             <button type="button" class="link" id="brief-also-add">+ Add a country</button>
           </fieldset>
+          <div class="field">
+            <label for="place-add">Add a place: start typing a city, or type any place</label>
+            <div class="row place-add"><input id="place-add" list="city-list" maxlength="80" autocomplete="off" enterkeyhint="done"><button type="button" class="secondary" id="place-add-btn">Add</button></div>
+            <datalist id="city-list"></datalist>
+          </div>
           <label class="field">Where to: one place per line, in order if you know it <textarea name="places" rows="3" maxlength="600"></textarea></label>
+          <p class="muted small" id="place-add-note" aria-live="polite"></p>
+          <fieldset class="choice" id="brief-shape">
+            <legend>Kind of trip</legend>
+            <label><input type="radio" name="shape" value="round"> Round trip: one place, then home</label>
+            <label><input type="radio" name="shape" value="multi"> Multi-city: several places</label>
+            <label><input type="radio" name="shape" value="oneway"> One way: no return</label>
+            <label><input type="radio" name="shape" value="open"> Open-ended: not sure where or how long yet</label>
+            <p class="muted small" id="shape-note" aria-live="polite"></p>
+          </fieldset>
           <fieldset class="choice" id="brief-dates">
             <legend>Dates</legend>
             <label><input type="radio" name="date_mode" value="fixed"> Fixed, as above</label>
             <label><input type="radio" name="date_mode" value="flexible"> Flexible by a few days</label>
             <label><input type="radio" name="date_mode" value="event"> Built around an event</label>
             <label><input type="radio" name="date_mode" value="open"> Not set yet</label>
-            <label class="one-way"><input type="checkbox" name="one_way"> One way: no return trip</label>
           </fieldset>
           <div class="row" id="brief-event" hidden>
             <label class="field">The event <input name="event_name" maxlength="120"></label>

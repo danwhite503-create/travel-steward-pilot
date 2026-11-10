@@ -103,8 +103,9 @@
   }
   // Small removals confirm with one button. The deletes that can't be undone confirm by pulling a lever:
   // the handle slid to the end of its track (mouse, touch or keyboard). Released early, it springs back.
-  function confirmBox(text, lever) {
+  function confirmBox(text, lever, yesLabel) {
     return new Promise((resolve) => {
+      const Y = $("#confirm-yes"); Y.textContent = yesLabel || "Delete"; Y.className = yesLabel ? "" : "danger";
       const L = $("#confirm-lever"), fill = $("#confirm-lever-fill"), wrap = $("#confirm-lever-wrap");
       $("#confirm-text").textContent = text;
       wrap.hidden = !lever; $("#confirm-yes").hidden = !!lever;
@@ -391,7 +392,7 @@
         plans[t.id] ? (isStale(t, plans[t.id].payload, plans[t.id].at) && ["checked", "refused"].includes(planState(plans[t.id].payload))
           ? el("span", { class: "plan-chip stale" }, "Plan out of date")
           : el("span", { class: "plan-chip" + CHIP[planState(plans[t.id].payload || {})][1] }, CHIP[planState(plans[t.id].payload || {})][0])) : "",
-        route(t.date_from, t.date_to, [p.one_way ? "one way, no return" : "", t.owner !== user.id ? "shared with you" : ""].filter(Boolean).join(", ")))));
+        route(t.date_from, t.date_to, [({ oneway: "one way, no return", multi: "multi-city", open: "open-ended" })[p.shape || (p.one_way ? "oneway" : "")] || "", t.owner !== user.id ? "shared with you" : ""].filter(Boolean).join(", ")))));
     }
     if (!trips.length) ul.append(el("li", { class: "empty" }, "No trips yet. Add your first below: a title is enough to start, and dates help the planner."));
   }
@@ -401,7 +402,11 @@
     const row = { title: f.title.value.trim(), date_from: f.date_from.value || null, date_to: f.date_to.value || null };
     const { error } = await sb.from("trips").insert(row);
     if (error) return flash(explain(error), "bad");
-    f.reset(); flash("Trip added.", "ok"); loadTrips();
+    f.reset(); flash("Trip added. Fill in the brief below.", "ok");
+    await loadTrips();
+    // Open the trip just made (his phone test, D-554): the newest trip of mine with this title.
+    const made = trips.find((t) => t.owner === user.id && t.title === row.title);
+    if (made) { await openTrip(made.id); const b = $("#brief-wrap"); if (b) { b.open = true; b.scrollIntoView({ block: "start" }); } }
   });
   $("#trip-back").addEventListener("click", () => { current = null; $("#trip-detail").hidden = true; $("#trip-list-wrap").hidden = false; loadTrips(); });
 
@@ -411,7 +416,7 @@
     $("#trip-ticket").className = "ticket " + livery(current.id, bp.country);
     $("#trip-stations").replaceWith(Object.assign(stations(bp), { id: "trip-stations" }));
     // One way: the trip's end date is the last day there, not a return (review L6).
-    $("#trip-dates").replaceWith(Object.assign(route(current.date_from, current.date_to, bp.one_way ? "one way, no return" : ""), { id: "trip-dates" }));
+    $("#trip-dates").replaceWith(Object.assign(route(current.date_from, current.date_to, ({ oneway: "one way, no return", multi: "multi-city", open: "open-ended" })[bp.shape || (bp.one_way ? "oneway" : "")] || ""), { id: "trip-dates" }));
   }
   $("#trip-edit-btn").addEventListener("click", () => {
     const f = $("#trip-edit"); f.title.value = current.title; f.date_from.value = current.date_from || ""; f.date_to.value = current.date_to || "";
@@ -723,13 +728,62 @@
     $("#brief-also-add").hidden = $$("#brief-also-list select").length >= 4;
   }
   $("#brief-also-add").addEventListener("click", () => alsoRow(""));
+  // Kind of trip (his request, 10 Nov 00:45 ET): round trip, multi-city, one way or open-ended. Guessed from
+  // the places until he picks one; one way is never guessed (a single place reads as a round trip).
+  let shapeBy = "auto";
+  const SHAPE_WORD = { round: "a round trip", multi: "multi-city", oneway: "one way", open: "open-ended" };
+  function shapeNow() { const r = $("#brief input[name=shape]:checked"); return r ? r.value : null; }
+  function guessShape() {
+    const f = $("#brief"), n = f.places.value.split("\n").map((s) => s.trim()).filter(Boolean).length;
+    return n >= 2 ? "multi" : n === 1 ? "round" : (f.country.value || f.from.value.trim()) ? null : "open";
+  }
+  function setShape(v, by) {
+    shapeBy = by;
+    for (const r of $$("#brief input[name=shape]")) r.checked = r.value === v;
+    $("#shape-note").textContent = !v ? "" : by === "auto" ? "Guessed " + SHAPE_WORD[v] + " from your places. Pick another if that's wrong." : "";
+  }
+  function autoShape() { if (shapeBy === "auto") setShape(guessShape(), "auto"); }
+  for (const r of $$("#brief input[name=shape]")) r.addEventListener("change", () => setShape(r.value, "you"));
+  for (const s of ["textarea[name=places]", "input[name=from]", "select[name=country]"]) $("#brief " + s).addEventListener("input", autoShape);
+  // City suggestions (his phone test, D-554): a built-in list (cities.js), no third-party data. US cities read
+  // "Boston, MA"; others "Paris, France". Adding a listed city fills the main country, or adds it under
+  // "Also visiting" (up to four) when the trip already has another main country.
+  const CITY_CC = new Map();
+  (function fillCities() {
+    const dl = $("#city-list"); if (!dl) return;
+    for (const c of (window.PILOT_CITIES || [])) {
+      const label = c.cc === "US" ? c.city + ", " + c.region : c.city + ", " + countryName(c.cc);
+      CITY_CC.set(label.toLowerCase(), c.cc);
+      dl.append(el("option", { value: label }));
+    }
+  })();
+  function addPlace() {
+    const inp = $("#place-add"), v = inp.value.trim(), note = $("#place-add-note");
+    if (!v) return;
+    const f = $("#brief"), lines = f.places.value.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (lines.length >= 12) { note.textContent = "Twelve places is the most a brief holds."; return; }
+    if (!lines.some((x) => x.toLowerCase() === v.toLowerCase())) lines.push(v);
+    f.places.value = lines.join("\n"); autoShape(); inp.value = ""; note.textContent = "Added " + v + ".";
+    const cc = CITY_CC.get(v.toLowerCase());
+    if (cc && [...f.country.options].some((o) => o.value === cc)) {
+      const also = $$("#brief-also-list select").map((x) => x.value);
+      if (!f.country.value) { f.country.value = cc; note.textContent += " Main country set to " + countryName(cc) + "."; }
+      else if (f.country.value !== cc && !also.includes(cc)) {
+        if (also.length < 4) { alsoRow(cc); note.textContent += " " + countryName(cc) + " added under Also visiting."; }
+        else note.textContent += " Four other countries is the most a brief holds, so " + countryName(cc) + " wasn't added.";
+      }
+    }
+    inp.focus();
+  }
+  $("#place-add-btn").addEventListener("click", addPlace);
+  $("#place-add").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addPlace(); } });
   function fillBrief(p, canWrite) {
     const f = $("#brief");
     $("#brief-also-list").replaceChildren(); $("#brief-also-add").hidden = false;
     for (const c of (Array.isArray(p.also) ? p.also : [])) alsoRow(c);
     f.from.value = p.from || ""; f.country.value = p.country || ""; f.places.value = placesOf(p).join("\n");
     for (const r of $$("#brief input[name=date_mode]")) r.checked = r.value === (p.date_mode || "");
-    f.flex_days.value = p.flex_days || ""; f.one_way.checked = !!p.one_way; f.event_name.value = (p.event && p.event.name) || ""; f.event_date.value = (p.event && p.event.date) || "";
+    f.flex_days.value = p.flex_days || ""; setShape(p.shape || (p.one_way ? "oneway" : ""), p.shape_by || (p.one_way ? "you" : "auto")); f.event_name.value = (p.event && p.event.name) || ""; f.event_date.value = (p.event && p.event.date) || "";
     for (const r of $$("#brief input[name=purpose]")) r.checked = r.value === (p.purpose || "");
     f.must.value = p.must || ""; f.avoid.value = p.avoid || "";
     const who = $("#brief-who"); who.replaceChildren(el("legend", {}, "Who's going"));
@@ -785,7 +839,8 @@
       places: f.places.value.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 12),
       date_mode: mode,
       flex_days: (mode === "flexible" || mode === "event") && f.flex_days.value ? Math.max(1, Math.min(30, Number(f.flex_days.value))) : null,
-      one_way: f.one_way.checked || null,
+      shape: shapeNow(), shape_by: shapeBy,
+      one_way: shapeNow() === "oneway" || null,
       parts: Object.keys(parts).length ? parts : null,
       event: mode === "event" && (f.event_name.value.trim() || f.event_date.value) ? { name: f.event_name.value.trim() || null, date: f.event_date.value || null } : null,
       who,
@@ -816,7 +871,21 @@
   }
   // The planner reads a shared trip in the store (D-553): sending is the share, with no file to download or email.
   const READ_HOW = { store: "read by the planner", export: "file made for the planner" };
+  // Before sending, say what's missing (his phone test, D-554): no brief, no one ticked, no preferences.
+  function sendGaps() {
+    const bp = (briefs[current.id] || {}).payload;
+    const gaps = [];
+    if (!bp) gaps.push("the trip brief isn't saved");
+    else {
+      if (!Array.isArray(bp.who) || !bp.who.length) gaps.push("no one is ticked as going");
+      if (!(bp.places || []).length && !bp.country) gaps.push("the brief names no place or country");
+    }
+    if (!ready.prefSections.size) gaps.push("you have no preferences saved");
+    return gaps;
+  }
   $("#share-on").addEventListener("click", async () => {
+    const gaps = shareLive ? [] : sendGaps();
+    if (gaps.length && !(await confirmBox("Before you send: " + gaps.join("; ") + ". The planner can still start, but the plan will be more general. Send anyway?", false, "Send anyway"))) return;
     if (!shareLive) {   // never record a second live share (review L7)
       const { error } = await sb.from("planner_shares").insert({ trip_id: current.id });
       if (error) return flash(explain(error), "bad");

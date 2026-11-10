@@ -76,8 +76,8 @@ When no version of the trip as asked passes the hard rules, the plan is a refusa
 
 `refusal.rule` and `refusal.figure` are required; zero to two counter-proposals, each passing every Tier A check. `write_plan.py` refuses a `checked` plan whose every option breaks a hard rule.
 
-## The brief, as the planner reads it (D-550, D-551)
+## The brief, as the planner reads it (D-550, D-551; `shape` added 10 Nov 2026)
 
-The trip item of kind `brief` the traveler fills in. Fields: `from`; `country` (the main one) and `also` (up to four more); `places` (in order); `date_mode` (`fixed`, `flexible`, `event`, `open`) with `flex_days` (for `flexible` and `event`) and `event` `{name, date}`; `one_way` (true: no return leg; the trip's end date is the last day there); `who` and `parts`; `purpose` (`leisure`, `work`, `mix`); `must`; `avoid`.
+The trip item of kind `brief` the traveler fills in. Fields: `from`; `country` (the main one) and `also` (up to four more); `places` (in order); `date_mode` (`fixed`, `flexible`, `event`, `open`) with `flex_days` (for `flexible` and `event`) and `event` `{name, date}`; `shape` (`round`, `multi`, `oneway`, `open`: the kind of trip, guessed from the places until the traveler picks one; `shape_by` is `auto` or `you`, so a guess can be told from a choice) and `one_way` (true when `shape` is `oneway`, kept for older readers: no return leg; the trip's end date is the last day there); `who` and `parts`; `purpose` (`leisure`, `work`, `mix`); `must`; `avoid`.
 
 In the store, `who` holds traveler ids and `parts` maps an id to `{from, to}` for anyone joining for part of the trip. From store v0.1.4 what the planner reads (the file, and from v0.1.5 the store read, `pilot_planner_read`) gives `who` as `[{name, from, to}]` instead: first names, the dates only for a part of the trip, removed travelers and other people's ids dropped, and no `parts`. Before v0.1.4 the file carries the ids as stored.
