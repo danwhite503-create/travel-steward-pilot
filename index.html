@@ -6,14 +6,14 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data:; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Trip pilot</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261110b">
 <script src="config.js"></script>
 <script src="vendor/supabase-js-2.45.4/supabase.js"></script>
-<script src="avatar.js" defer></script>
-<script src="team.js" defer></script>
-<script src="cities.js" defer></script>
-<script src="citylayers.js" defer></script>
-<script src="app.js" defer></script>
+<script src="avatar.js?v=20261110b" defer></script>
+<script src="team.js?v=20261110b" defer></script>
+<script src="cities.js?v=20261110b" defer></script>
+<script src="citylayers.js?v=20261110b" defer></script>
+<script src="app.js?v=20261110b" defer></script>
 </head>
 <body>
 <div id="draft-banner" class="banner" hidden>Draft: this notice hasn't been approved yet, so sign-up is off.</div>
@@ -25,7 +25,7 @@
       <h1 data-cfg="PILOT_NAME">Trip pilot</h1>
       <span class="pilot-tag">Pilot</span>
     </div>
-    <div class="who-wrap"><span id="who-badge" class="mini-badge" hidden></span><div id="who"></div></div>
+    <div class="who-wrap"><span id="who-badge" class="mini-badge" hidden></span><div id="who"></div><button type="button" id="head-signout" class="head-signout" hidden>Sign out</button></div>
   </div>
 </header>
 <main>
@@ -98,7 +98,7 @@
           <label class="sr-only" for="start-text">Tell Arlo about your trip</label>
           <textarea id="start-text" name="text" rows="3" maxlength="1000" placeholder="London to Paris in March, about a week, two of us"></textarea>
           <div class="start-tools"><button type="button" class="mic" data-for="start-text" aria-label="Speak instead of typing" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><span class="muted small mic-hint" id="start-mic-hint"></span></div>
-          <div class="chips" id="start-chips"></div>
+          <div class="tiles" id="start-chips"></div>
           <button type="submit" id="start-send">Start with Arlo</button>
           <p class="muted small" id="start-note" aria-live="polite"></p>
         </form>

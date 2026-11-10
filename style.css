@@ -498,3 +498,11 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 @media (prefers-reduced-motion:reduce){.mic.on{animation:none}}
 .start-tools{display:flex;align-items:center;gap:10px;margin-top:10px}
 .talk-form .mic{margin-right:6px}
+
+.start .tiles-head{margin:12px 0 6px;font:600 .75rem/1.2 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.start .chips.ideas,.start .chips.budget{margin:0}
+.start .chip.idea{border-color:var(--green);border-width:2px}
+.start .chip.more{border-style:dashed;color:var(--muted)}
+.start .chip.money[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+
+.head-signout{margin-left:auto;flex:none;background:transparent;color:var(--sign-ink);border:1px solid currentColor;border-radius:999px;padding:6px 12px;min-height:40px;font-size:var(--step--1)}

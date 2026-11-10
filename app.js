@@ -214,8 +214,8 @@
   }
   async function render(session) {
     user = session && session.user;
-    if (!user) { showConsent(false); $("#who").textContent = ""; $("#who-badge").hidden = true; return; }
-    $("#who").textContent = user.email || ""; $("#who-badge").hidden = false;
+    if (!user) { showConsent(false); $("#who").textContent = ""; $("#who-badge").hidden = true; $("#head-signout").hidden = true; return; }
+    $("#who").textContent = user.email || ""; $("#who-badge").hidden = false; $("#head-signout").hidden = false;
     let ok = false;
     try { ok = await ensureConsent(); } catch (e) { flash(explain(e), "bad"); }
     if (!ok) {
@@ -396,15 +396,42 @@
     }
     if (!trips.length) ul.append(el("li", { class: "empty" }, CFG.STEWARD_LIVE === true ? "No trips yet. Tell Arlo about one below." : "No trips yet. Add your first below: a title is enough to start, and dates help the planner."));
   }
+  // Starter tiles (his choice C, 10 Nov 12:16 ET): ideas for the time of year, three at a time, shuffled on each visit
+  // and on "More ideas"; and a budget row. Written ahead on the page, kept to the trip rules (trains first, a day's
+  // carbon limit), so nothing is sent anywhere until he writes to Arlo; Arlo's own replies then tailor the choices.
+  const SEASON = [
+    ["A ski week reached by train", "A winter city break with museums", "Winter sun, one long train ride", "A cosy weekend in a small town", "Northern lights, if the timing fits"],
+    ["A winter city break with museums", "A ski week reached by train", "A long weekend of food and markets", "Winter sun, one long train ride", "A quiet week by the sea out of season"],
+    ["Early spring in southern Europe", "A long weekend of food and markets", "A city break before the crowds", "Spring skiing reached by train", "A week by train through two or three cities"],
+    ["Spring blossom in a city of gardens", "A week by train through two or three cities", "A walking trip between villages", "A city break before the crowds", "A long weekend of food and markets"],
+    ["A walking trip between villages", "A coast trip before summer", "A week by train through two or three cities", "Gardens and vineyards by train", "A city weekend under the carbon limit"],
+    ["A coast trip before the peak", "Long light evenings up north", "A lake and mountain week by train", "A festival trip", "A walking trip between villages"],
+    ["Long light evenings up north", "A lake and mountain week by train", "Islands reached by ferry", "A cooler mountain escape", "A festival trip"],
+    ["A cooler mountain escape", "Islands reached by ferry", "Long light evenings up north", "A lake and mountain week by train", "A quiet city while locals are away"],
+    ["Harvest season in wine country", "A coast trip after the crowds", "A week by train through two or three cities", "A walking trip between villages", "A city break as the season turns"],
+    ["Autumn colour by train", "Harvest season in wine country", "A city break as the season turns", "A long weekend of food and markets", "A walking trip in autumn"],
+    ["Early Christmas markets by train", "A winter city break with museums", "Autumn colour, if it's still out", "A cosy weekend in a small town", "Winter sun, one long train ride"],
+    ["Christmas markets by train", "A cosy weekend in a small town", "A winter city break with museums", "A ski week reached by train", "New Year somewhere new"]];
+  const BUDGET = [["Shoestring", "on a tight budget"], ["Mid-range", "on a mid-range budget"], ["Treat", "as a treat, budget flexible"]];
+  const shuffle = (a) => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+  const addToStart = (words) => { const t = $("#start-text"); const v = t.value.trim(); t.value = v ? v.replace(/[.,;]?$/, ", ") + words : words.charAt(0).toUpperCase() + words.slice(1); t.focus(); };
+  function paintStartTiles() {
+    const box = $("#start-chips"); if (!box) return;
+    const m = new Date().getMonth(), month = new Date().toLocaleString("en-US", { month: "long" });
+    const ideas = el("div", { class: "chips ideas" }, ...shuffle(SEASON[m]).slice(0, 3).map((c) =>
+      el("button", { type: "button", class: "chip idea", onclick: () => addToStart(c.charAt(0).toLowerCase() + c.slice(1)) }, c)),
+      el("button", { type: "button", class: "chip more", onclick: paintStartTiles, "aria-label": "Show more ideas" }, "More ideas"));
+    const money = el("div", { class: "chips budget", role: "group", "aria-label": "Budget" }, ...BUDGET.map(([label, words]) =>
+      el("button", { type: "button", class: "chip money", onclick: (e) => { addToStart(words); for (const b of e.target.parentNode.children) b.setAttribute("aria-pressed", String(b === e.target)); }, "aria-pressed": "false" }, label)));
+    box.replaceChildren(el("p", { class: "tiles-head" }, "Ideas for " + month), ideas, el("p", { class: "tiles-head" }, "Budget"), money);
+  }
   // Arlo first (his direction, 10 Nov 10:51 ET): with the live steward on, a new trip starts as a message to Arlo,
   // not a form. The trip is made with the message as a working title; Arlo names it and sets its dates (set_trip).
   if (CFG.STEWARD_LIVE === true) {
     $("#trip-new").hidden = true; $("#trip-start").hidden = false;
     const T = window.TravelTeam, av = $("#start-avatar");
     if (T && T.svg && av) { av.className = "face"; av.innerHTML = T.svg("steward"); }
-    const chips = $("#start-chips");
-    for (const c of ["A weekend away", "A week by train", "A trip around an event"]) chips.append(el("button", { type: "button", class: "chip",
-      onclick: () => { const t = $("#start-text"); t.value = (t.value ? t.value.trim() + " " : "") + c.toLowerCase(); t.focus(); } }, c));
+    paintStartTiles();
   }
   const workingTitle = (text) => { const t = text.replace(/\s+/g, " ").trim(); if (t.length <= 60) return t; const cut = t.slice(0, 60); return cut.slice(0, cut.lastIndexOf(" ") > 30 ? cut.lastIndexOf(" ") : 60) + "…"; };
   // Voice to text (his choice B, 10 Nov 11:35 ET): the browser's own speech service turns speech into text in the box;
@@ -1111,6 +1138,8 @@
   $("#nc-export").addEventListener("click", exportMine);
   $("#nc-delete").addEventListener("click", deleteMine);
   $("#signout-btn").addEventListener("click", () => sb.auth.signOut());
+  // Sign out from the header (his phone, 10 Nov): then reload, which also picks up a new release without a hard reload.
+  $("#head-signout").addEventListener("click", async () => { await sb.auth.signOut(); location.reload(); });
   $("#nc-signout").addEventListener("click", () => sb.auth.signOut());
 
   // ---------- start ----------
