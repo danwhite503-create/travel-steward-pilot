@@ -441,7 +441,7 @@
     const bp = (briefs[current.id] || {}).payload || {};
     paintTicket();
     const mine = current.owner === user.id;
-    for (const s of ["#share-on", "#share-off", "#share-file", "#trip-delete"]) $(s).disabled = !mine;
+    for (const s of ["#share-on", "#share-off", "#trip-delete"]) $(s).disabled = !mine;
     let canWrite = mine;
     if (!mine) { const m = await sb.from("trip_members").select("role").eq("trip_id", current.id).eq("user_id", user.id).maybeSingle(); canWrite = !!(m.data && m.data.role !== "viewer"); }
     $("#item-new").hidden = !canWrite;
@@ -514,7 +514,7 @@
       const faces = el("span", { class: "crew-faces" });
       for (const m of T.TEAM) { const f = el("span", { class: "face", title: m.name + ", " + m.role }); f.innerHTML = T.svg(m.key); faces.append(f); }
       const line = finished ? (currentPlan.status === "refused" ? "The team has answered: it can't be done as asked. See what could work instead." : "The team has finished this plan.") :
-        shareLive ? "Queued with Arlo. The team starts when the planner picks it up, and you'll see who's working here." :
+        shareLive ? "Sent to Arlo. The team starts when the planner picks it up, and you'll see who's working here." :
         "Send this trip to the planner (below) to start. You'll see who's working on it here.";
       box.append(el("div", { class: "idle" }, el("div", { class: "crew" }, el("span", { class: "crew-label" }, "Your team"), faces), el("p", { class: "muted small" }, line)));
       return;
@@ -787,33 +787,27 @@
     const s = await sb.from("planner_shares").select("id, shared_at, revoked_at").eq("trip_id", current.id).is("revoked_at", null);
     const live = !s.error && (s.data || []).length > 0;
     shareLive = live; paintWork();
-    $("#share-state").textContent = live ? "Sent to the planner on " + fmtDate(s.data[0].shared_at.slice(0, 10)) + ". If you didn't email the file yet, make it again below." : "Not sent yet.";
-    $("#share-on").hidden = live; $("#share-file").hidden = !live; $("#share-off").hidden = !live;
+    $("#share-state").textContent = live ? "Sent to the planner on " + fmtDate(s.data[0].shared_at.slice(0, 10)) + ". The planner reads it here: nothing to download or email." : "Not sent yet.";
+    $("#share-on").hidden = live; $("#share-off").hidden = !live;
     const r = await sb.from("planner_reads").select("how, read_at").eq("trip_id", current.id).order("read_at", { ascending: false });
     const ul = $("#read-log"); ul.replaceChildren();
-    for (const x of (r.data || [])) ul.append(el("li", {}, x.read_at.replace("T", " ").slice(0, 16) + " UTC: " + (x.how === "export" ? "file made for the planner" : x.how)));
-    if (!(r.data || []).length) ul.append(el("li", { class: "empty" }, "No files made yet."));
+    for (const x of (r.data || [])) ul.append(el("li", {}, x.read_at.replace("T", " ").slice(0, 16) + " UTC: " + (READ_HOW[x.how] || x.how)));
+    if (!(r.data || []).length) ul.append(el("li", { class: "empty" }, live ? "Not read yet." : "Nothing read yet."));
   }
-  // One step: record the share, then make the file to email (D-550, fix 3).
-  async function makeFile() {
-    const { data, error } = await sb.rpc("pilot_export_trip", { t: current.id });
-    if (error) { loadShare(); return flash(explain(error), "bad"); }
-    download("trip-for-planner-" + current.id.slice(0, 8) + ".json", data);
-    flash("File made. Email it to " + (CFG.OPERATOR_NAME || "the planner") + ": the planner starts when it arrives.", "ok");
-    loadShare();
-  }
+  // The planner reads a shared trip in the store (D-553): sending is the share, with no file to download or email.
+  const READ_HOW = { store: "read by the planner", export: "file made for the planner" };
   $("#share-on").addEventListener("click", async () => {
-    if (!shareLive) {   // already shared (a file failed earlier): don't record a second share (review L7)
+    if (!shareLive) {   // never record a second live share (review L7)
       const { error } = await sb.from("planner_shares").insert({ trip_id: current.id });
       if (error) return flash(explain(error), "bad");
     }
-    await makeFile();
+    flash("Sent. The planner reads it here, and you'll see the team at work above.", "ok");
+    loadShare();
   });
   $("#share-off").addEventListener("click", async () => {
     const { error } = await sb.from("planner_shares").update({ revoked_at: new Date().toISOString() }).eq("trip_id", current.id).is("revoked_at", null);
     error ? flash(explain(error), "bad") : loadShare();
   });
-  $("#share-file").addEventListener("click", makeFile);
   $("#trip-delete").addEventListener("click", async () => {
     if (!(await confirmBox("Delete “" + current.title + "” and everything on it? This can't be undone.", true))) return;
     const { error } = await sb.from("trips").delete().eq("id", current.id);

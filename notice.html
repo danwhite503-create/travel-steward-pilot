@@ -27,7 +27,7 @@
 <tr><td>Your travel preferences (getting there, where you stay, food, getting around, events, pace, values, budget)</td><td>to plan the way you travel</td><td>your profile</td></tr>
 <tr><td>The people you add as travelers: first and last name, nationality, passport expiry date</td><td>to check entry rules and passport validity</td><td>your profile; the planner gets first name, nationality and passport expiry date, never the last name</td></tr>
 <tr><td>Your trips, and what is written on them</td><td>to plan the trip</td><td>the trip; seen by people you add to it</td></tr>
-<tr><td>Shares with the planner, and each time a file of a shared trip is made for the planner</td><td>so you can see when the planner had your trip</td><td>your account</td></tr>
+<tr><td>Shares with the planner, and each time the planner reads a shared trip</td><td>so you can see when the planner had your trip</td><td>your account</td></tr>
 <tr><td>Your agreement to this notice, with its version and date</td><td>to show you agreed, and to what</td><td>your account</td></tr>
 </table></div>
 <p><strong>Never kept:</strong> passport, visa, Known Traveler or redress numbers; card, bank or account numbers; passwords, PINs or codes; a street address with an apartment or unit number. The site refuses text that looks like these, but it works by pattern: it can miss one, or refuse something harmless, in which case reword it. Airline and rail member numbers are not kept in the pilot either. There's no place for health details; please keep them out of notes too, since the site can't spot them.</p>
@@ -41,9 +41,9 @@
 <li><strong><span data-cfg="OPERATOR_NAME">The operator</span>:</strong> everything, as the database's owner, through Supabase's dashboard, and looks only to run the pilot and fix problems.</li>
 <li><strong>The planner (Claude, in <span data-cfg="OPERATOR_NAME">the operator</span>'s Anthropic account):</strong>
 <ul>
-<li>It gets a trip only after you share it and send the file the site makes. The file holds that trip (with what anyone on it wrote), your preferences, and everyone you've added as a traveler, not only those on this trip: first name, nationality and passport expiry date. Never your travelers' last names, and never another trip of yours.</li>
-<li>Each file made for the planner is logged, and you can see the log on the trip. What the operator sees in the database, or asks Claude to check there, is not logged.</li>
-<li>Stopping sharing stops new files; what is already in the operator's Claude chats stays there until the pilot's end, when they delete those chats.</li>
+<li>It reads a trip only after you share it with the planner. It reads it in the database, through a step only the operator's account can run: that trip (with what anyone on it wrote), your preferences, and everyone you've added as a traveler, not only those on this trip: first name, nationality and passport expiry date. Never your travelers' last names, and never another trip of yours. What it reads goes into the operator's Claude chats.</li>
+<li>Each time the planner reads a trip is logged, and you can see the log on the trip. What the operator sees in the database, or asks Claude to check there, is not logged.</li>
+<li>Stopping sharing stops the planner reading the trip at once; what is already in the operator's Claude chats stays there until the pilot's end, when they delete those chats.</li>
 <li>The operator may also ask Claude to help run the database itself, for example to check it works or fix a fault, which can show it what is stored.</li>
 </ul></li>
 <li><strong>Supabase:</strong> stores and serves the data under its own terms.</li>
