@@ -394,8 +394,62 @@
           : el("span", { class: "plan-chip" + CHIP[planState(plans[t.id].payload || {})][1] }, CHIP[planState(plans[t.id].payload || {})][0])) : "",
         route(t.date_from, t.date_to, [({ oneway: "one way, no return", multi: "multi-city", open: "open-ended" })[p.shape || (p.one_way ? "oneway" : "")] || "", t.owner !== user.id ? "shared with you" : ""].filter(Boolean).join(", ")))));
     }
-    if (!trips.length) ul.append(el("li", { class: "empty" }, "No trips yet. Add your first below: a title is enough to start, and dates help the planner."));
+    if (!trips.length) ul.append(el("li", { class: "empty" }, CFG.STEWARD_LIVE === true ? "No trips yet. Tell Arlo about one below." : "No trips yet. Add your first below: a title is enough to start, and dates help the planner."));
   }
+  // Arlo first (his direction, 10 Nov 10:51 ET): with the live steward on, a new trip starts as a message to Arlo,
+  // not a form. The trip is made with the message as a working title; Arlo names it and sets its dates (set_trip).
+  if (CFG.STEWARD_LIVE === true) {
+    $("#trip-new").hidden = true; $("#trip-start").hidden = false;
+    const T = window.TravelTeam, av = $("#start-avatar");
+    if (T && T.svg && av) { av.className = "face"; av.innerHTML = T.svg("steward"); }
+    const chips = $("#start-chips");
+    for (const c of ["A weekend away", "A week by train", "A trip around an event"]) chips.append(el("button", { type: "button", class: "chip",
+      onclick: () => { const t = $("#start-text"); t.value = (t.value ? t.value.trim() + " " : "") + c.toLowerCase(); t.focus(); } }, c));
+  }
+  const workingTitle = (text) => { const t = text.replace(/\s+/g, " ").trim(); if (t.length <= 60) return t; const cut = t.slice(0, 60); return cut.slice(0, cut.lastIndexOf(" ") > 30 ? cut.lastIndexOf(" ") : 60) + "…"; };
+  // Voice to text (his choice B, 10 Nov 11:35 ET): the browser's own speech service turns speech into text in the box;
+  // nothing is sent until the traveler taps Send, so the never-kept check and the review of the words still apply.
+  // Shown only where the browser has speech recognition; elsewhere a hint points to the phone keyboard's mic.
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, recBtn = null;
+  function stopMic() { if (rec) { try { rec.stop(); } catch (_) {} } }
+  const noteFor = (btn) => document.getElementById(btn.dataset.for === "start-text" ? "start-note" : "talk-note");
+  function micNote(btn, text) { const n = noteFor(btn); if (n) n.textContent = text; }
+  for (const btn of document.querySelectorAll("button.mic")) {
+    if (CFG.STEWARD_LIVE !== true) continue;
+    if (!SR) { const h = $("#start-mic-hint"); if (h && btn.dataset.for === "start-text") h.textContent = "Tip: on a phone, tap the mic on your keyboard to speak."; continue; }
+    btn.hidden = false;
+    if (btn.dataset.for === "start-text") { const h = $("#start-mic-hint"); if (h) h.textContent = "Tap to speak instead of typing"; }
+    btn.addEventListener("click", () => {
+      if (rec && recBtn === btn) { stopMic(); return; }
+      stopMic();
+      const box = document.getElementById(btn.dataset.for); const before = box.value ? box.value.trim() + " " : "";
+      rec = new SR(); recBtn = btn; rec.lang = navigator.language || "en-US"; rec.interimResults = true; rec.continuous = false;
+      rec.onresult = (ev) => { let t = ""; for (const r of ev.results) t += r[0].transcript; box.value = (before + t).slice(0, Number(box.maxLength) > 0 ? box.maxLength : 1000); };
+      rec.onerror = (ev) => micNote(btn, ev.error === "not-allowed" || ev.error === "service-not-allowed"
+        ? "The microphone is blocked. Allow it in your browser's settings, or type instead." : "Didn't catch that. Tap the mic and try again, or type.");
+      rec.onend = () => { btn.classList.remove("on"); btn.setAttribute("aria-pressed", "false"); if (recBtn === btn) { rec = null; recBtn = null; }
+        const n = noteFor(btn); if (n && /^Listening/.test(n.textContent)) n.textContent = box.value.trim() ? "Check the words, then send." : ""; box.focus(); };
+      btn.classList.add("on"); btn.setAttribute("aria-pressed", "true"); micNote(btn, "Listening… tap the mic again to stop.");
+      try { rec.start(); } catch (_) { rec = null; recBtn = null; btn.classList.remove("on"); micNote(btn, "The mic couldn't start. Type instead."); }
+    });
+  }
+  $("#trip-start").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    stopMic();
+    const text = $("#start-text").value.trim(), note = $("#start-note");
+    if (!text) { note.textContent = "Tell Arlo a little about the trip first."; return; }
+    const nk = neverKept(text);
+    if (nk) { note.textContent = "Not sent: this looks like " + nk + ", which the pilot never keeps. Reword it and try again."; return; }
+    $("#start-send").disabled = true; note.textContent = "Setting up your trip…";
+    const { data, error } = await sb.from("trips").insert({ title: workingTitle(text), date_from: null, date_to: null }).select("id").single();
+    $("#start-send").disabled = false;
+    if (error || !data) { note.textContent = error ? explain(error) : "The trip wasn't saved. Try again."; return; }
+    $("#start-text").value = ""; note.textContent = "";
+    await loadTrips(); await openTrip(data.id);
+    $("#talk").scrollIntoView({ block: "start" });
+    await sendTalk(text);
+  });
   $("#trip-new").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = e.target;
@@ -516,10 +570,10 @@
       await loadTrips(); current = trips.find((t) => t.id === current.id) || current;
       const bp = (briefs[current.id] || {}).payload || {};
       fillBrief(bp, !$("#brief button[type=submit]").disabled); paintDocs(bp); paintTicket();
-      note.textContent = "Arlo updated the brief below.";
+      note.textContent = data.dates_changed ? "Arlo set the trip's name and dates. Edit trip changes them." : "Arlo updated the brief below.";
     }
   }
-  $("#talk-form").addEventListener("submit", (e) => { e.preventDefault(); sendTalk($("#talk-text").value); });
+  $("#talk-form").addEventListener("submit", (e) => { e.preventDefault(); stopMic(); sendTalk($("#talk-text").value); });
 
   async function loadItems() {
     const { data, error } = await sb.from("trip_items").select("id, kind, payload, created_by, created_at, updated_at").eq("trip_id", current.id).order("created_at");
