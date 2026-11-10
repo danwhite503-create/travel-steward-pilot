@@ -12,6 +12,7 @@
 <script src="avatar.js" defer></script>
 <script src="team.js" defer></script>
 <script src="cities.js" defer></script>
+<script src="citylayers.js" defer></script>
 <script src="app.js" defer></script>
 </head>
 <body>
@@ -53,6 +54,7 @@
           <li><strong>Google</strong> handles sign-in, so it learns that you signed in to the pilot. It sees nothing you enter on the site.</li>
           <li><strong>I can see everything you enter,</strong> as the owner of the database. I'll look only to run the pilot and fix problems.</li>
           <li><strong>Planning runs in my own Claude account (Anthropic).</strong> When you share a trip with the planner, that trip, your travel preferences, and each of your travelers' first name, nationality and passport expiry date go into my Claude chats, and Claude may read it through my account to plan, check and fix the pilot. Anthropic's handling of it follows my account's terms and settings. My Claude account is <span data-cfg="CLAUDE_PLAN">[plan]</span>. Chats <span data-cfg="CHATS_TRAINING">[are / aren't]</span> used to train Anthropic's models.</li>
+          <li><strong>Arlo, the live steward, runs on Anthropic's API.</strong> When you or someone on your trip writes to Arlo, that message, the trip's recent messages, its title, dates, brief and plan summary go to Anthropic's API through my server; when the trip's owner writes, also the owner's preferences and the first names and nationalities of the travelers going. Arlo works on a trip only when you and the owner have agreed to this version. Anthropic says it deletes these within 30 days (longer if its safety systems flag them, up to 2 years, or the law requires) and doesn't train on them without permission. Arlo can't book or send anything, and what he says about places, prices or times is a suggestion until checked.</li>
         </ul></li>
       <li><strong>What it keeps:</strong> your Google account's email and account ID, and the name and profile-picture link Google sends when you sign in; a display name and home city; your travel preferences; the people you add as travelers (first and last name, nationality, passport expiry date only); your trips and what the planner writes for them; when you shared a trip with the planner; and this agreement.</li>
       <li><strong>What it never keeps:</strong> passport, visa, Known Traveler or redress numbers; card or bank numbers; passwords or codes; a street address with an apartment or unit number. Please don't type them anywhere on the site. It tries to refuse them automatically, but that check can miss one. Please also keep health details out of notes.</li>
@@ -126,6 +128,17 @@
         </form>
         <section id="plan-stale" class="docs-warn" hidden aria-label="Plan out of date"></section>
         <section id="trip-docs" class="docs-warn" hidden aria-label="Travel documents"></section>
+        <section id="talk" class="panel talk" aria-label="Talk to your steward">
+          <h3>Talk to Arlo, your steward</h3>
+          <p class="muted small" id="talk-intro">Tell Arlo about the trip in your own words. He asks one thing at a time and fills in the trip brief as you go. Places, prices and times he mentions are suggestions until the team checks them.</p>
+          <ol id="thread" class="thread" aria-live="polite"></ol>
+          <form id="talk-form" class="talk-form">
+            <label class="sr-only" for="talk-text">Message Arlo</label>
+            <input id="talk-text" name="text" maxlength="1000" autocomplete="off" placeholder="Ask or tell Arlo…" enterkeyhint="send">
+            <button type="submit">Send</button>
+          </form>
+          <p class="muted small" id="talk-note" aria-live="polite"></p>
+        </section>
         <section id="work" class="work" aria-label="Your team on this trip"></section>
         <section id="plan" class="plan" hidden aria-label="Your plan"></section>
         <details id="brief-wrap" class="panel brief-wrap" open>

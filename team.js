@@ -23,6 +23,8 @@
       bg: "#2f5d3a", skin: "#e8b48f", hair: "long", hairC: "#6b4a2b", outfit: "#4f6b3a", collar: null, hat: "ranger", prop: "leaf" },
     { key: "booking", name: "Dev", role: "Booking", does: "Builds each booking link and walks you to the seller's page, then stops: you pay. Confirms what you booked from the email.", parts: "C13",
       bg: "#808183", skin: "#8d5a3b", hair: "short", hairC: "#1a120d", outfit: "#9cc3e6", collar: null, hat: null, prop: "headset" },
+    { key: "suitcase", name: "Tove", role: "Suitcase", does: "Reads what the others settled (weather, nights, dress codes, activities, luggage rules) and suggests what to pack: generic items, no brands.", parts: "D-557",
+      bg: "#6b6b6b", skin: "#f1c9a5", hair: "long", hairC: "#c08a3e", outfit: "#2f4f6f", collar: "#ffffff", hat: null, prop: "key" },
     { key: "critic", name: "Margit", role: "The inspector", does: "Never sees how the plan was made. Checks it against every rule and scores it before it reaches you.", parts: "C12, C9",
       bg: "#5c5c5c", skin: "#f6d7c3", hair: "bun", hairC: "#9a9a9a", outfit: "#3b3f45", collar: "#ffffff", hat: null, prop: "clipboard", glasses: true }
   ];

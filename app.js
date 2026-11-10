@@ -402,7 +402,7 @@
     const row = { title: f.title.value.trim(), date_from: f.date_from.value || null, date_to: f.date_to.value || null };
     const { error } = await sb.from("trips").insert(row);
     if (error) return flash(explain(error), "bad");
-    f.reset(); flash("Trip added. Fill in the brief below.", "ok");
+    f.reset(); flash(CFG.STEWARD_LIVE === true ? "Trip added. Tell Arlo about it below." : "Trip added. Fill in the brief below.", "ok");
     await loadTrips();
     // Open the trip just made (his phone test, D-554): the newest trip of mine with this title.
     const made = trips.find((t) => t.owner === user.id && t.title === row.title);
@@ -451,8 +451,76 @@
     if (!mine) { const m = await sb.from("trip_members").select("role").eq("trip_id", current.id).eq("user_id", user.id).maybeSingle(); canWrite = !!(m.data && m.data.role !== "viewer"); }
     $("#item-new").hidden = !canWrite;
     fillBrief(bp, canWrite); paintDocs(bp);
-    await Promise.all([loadItems(), loadShare()]);
+    $("#talk").hidden = CFG.STEWARD_LIVE !== true;   // shown only once he switches the live steward on (D-557)
+    $("#talk-form").hidden = !canWrite; $("#talk-text").disabled = !canWrite; $("#talk-note").textContent = "";
+    await Promise.all([loadItems(), loadShare(), loadThread()]);
   }
+  // ---------- talk to the steward (D-557, S1) ----------
+  // The thread lives in the store (messages); the steward-chat function writes the traveler's message as them,
+  // then Arlo's reply and any brief fields it filled. Nothing is sent from here but the message and the trip id.
+  async function loadThread() {
+    const ol = $("#thread"); if (!ol || !current) return;
+    const { data, error } = await sb.from("messages").select("id, author, agent, kind, body, chips, created_at").eq("trip_id", current.id).order("created_at");
+    if (error) { ol.replaceChildren(); return; }
+    ol.replaceChildren();
+    const rows = data || [];
+    if (!rows.length) ol.append(el("li", { class: "empty" }, "Say hello, or tell Arlo where you'd like to go."));
+    const T = window.TravelTeam;
+    rows.forEach((m, i) => {
+      const mine = m.kind === "user";
+      if (m.kind === "handoff") { ol.append(el("li", { class: "handoff small" }, m.body)); return; }
+      const tm = T && T.TEAM.find((x) => x.key === m.agent);
+      const who = mine ? (m.author === user.id ? "You" : "Someone on this trip") : tm ? tm.name + " · " + (m.agent === "steward" ? "Steward" : tm.role) : "The team";
+      const li = el("li", { class: "msg " + (mine ? "me" : "agent") }, el("div", { class: "msg-who" }, who), el("div", { class: "msg-body" }, m.body));
+      if (m.kind === "suggestion") li.querySelector(".msg-who").append(" ", el("span", { class: "badge-sugg" }, "suggestion"));
+      const last = i === rows.length - 1;
+      if (!mine && last && Array.isArray(m.chips) && m.chips.length && !$("#talk-text").disabled)
+        li.append(el("div", { class: "chips" }, ...m.chips.map((c) => el("button", { type: "button", class: "chip", onclick: () => sendTalk(c) }, c))));
+      ol.append(li);
+    });
+    ol.scrollTop = ol.scrollHeight;
+  }
+  // The never-kept check, on the page too (overnight runs, 10 Nov): a message carrying such a value never leaves the
+  // phone, and the reason is named. The same patterns as the database and the function; it works by pattern.
+  function neverKept(raw) {
+    const t = String(raw).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, " ").replace(/\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}(:?\d{2})?)?)?/g, " ");
+    if (/(\d[ -]?){8,}\d/.test(t)) return "a long number (card, account or document number)";
+    if (/(^|[^a-z])[a-z]{1,2}\d{6,9}([^0-9]|$)/i.test(t)) return "a passport-shaped number";
+    if (/(password|passcode|\bpin\b|\bcvv\b|\bcvc\b)\s*[:=]?\s*\S/i.test(t)) return "a password or code";
+    if (/(\bapt\b\.?|\bunit\b|\bsuite\b|\bflat\b|#)\s*\d/i.test(t)) return "a unit number in an address";
+    return null;
+  }
+  let talking = false;
+  async function sendTalk(text) {
+    text = (text || "").trim();
+    const note = $("#talk-note");
+    if (!text || talking || !current) return;
+    const nk = neverKept(text);
+    if (nk) { note.textContent = "Not sent: this looks like " + nk + ", which the pilot never keeps. Reword it and try again."; return; }
+    talking = true; $("#talk-form button").disabled = true; note.textContent = "Arlo is thinking…";
+    const { data, error } = await sb.functions.invoke("steward-chat", { body: { trip_id: current.id, text } });
+    talking = false; $("#talk-form button").disabled = false;
+    if (error) {
+      const st = error.context && error.context.status;
+      let why = "Arlo couldn't answer just now. Try again in a minute.";
+      if (st === 503 || st === 404) why = "The live steward isn't switched on yet. The brief below still works, and the planner reads it when you send the trip.";
+      else if (st === 400) why = "That message wasn't sent: it was empty, too long, or looked like a number or code the pilot never keeps. Reword it and try again.";
+      else if (st === 403) why = "Only the trip's owner and editors can write here.";
+      else if (st === 429) why = "That's today's limit for messages. Try again tomorrow.";
+      note.textContent = why;
+      return;
+    }
+    note.textContent = ""; $("#talk-text").value = "";
+    await loadThread();
+    if (data && (data.brief_changed || data.dates_changed)) {
+      await loadTrips(); current = trips.find((t) => t.id === current.id) || current;
+      const bp = (briefs[current.id] || {}).payload || {};
+      fillBrief(bp, !$("#brief button[type=submit]").disabled); paintDocs(bp); paintTicket();
+      note.textContent = "Arlo updated the brief below.";
+    }
+  }
+  $("#talk-form").addEventListener("submit", (e) => { e.preventDefault(); sendTalk($("#talk-text").value); });
+
   async function loadItems() {
     const { data, error } = await sb.from("trip_items").select("id, kind, payload, created_by, created_at, updated_at").eq("trip_id", current.id).order("created_at");
     if (error) return flash(explain(error), "bad");
@@ -605,9 +673,69 @@
     if (p.inspector && p.inspector.note) box.append(el("details", { class: "how inspector-how" }, el("summary", {}, "How Margit checked it"),
       el("p", { class: "inspector-note" }, face("critic", "tiny"), String(p.inspector.note))));
   }
+  // The trip line (D-557, S2): the option's tentpoles drawn as a rail line. Stations are where the trip stops
+  // (with the stay there), track is each train or flight between them, in day order. Built only from the plan's
+  // own parts; a part whose title doesn't name its ends is shown by its title. Flights read dashed.
+  // Stop names come from a part's title: "… · A → B", or "A to B" when both ends read as place names (not
+  // "Return to Rome"). Anything else is shown by its title, never guessed.
+  const NOT_PLACE = /^(return|back|day|go|going|trip|travel|head|on|then)\b/i;
+  function legEnds(title) {
+    const t = String(title || ""), seg = t.includes(" · ") ? t.slice(t.lastIndexOf(" · ") + 3) : t;
+    let m = seg.split(/\s*→\s*/);
+    if (m.length !== 2) { m = seg.split(/\s+to\s+/); if (m.length !== 2 || NOT_PLACE.test(m[0]) || !/^\p{Lu}/u.test(m[0]) || !/^\p{Lu}/u.test(m[1])) return null; }
+    return m[0].trim() && m[1].trim() ? [m[0].trim(), m[1].trim()] : null;
+  }
+  // A stop's name with its city layer (S3): the city's colours and a drawing, when the city is one we've drawn.
+  function stopName(name) {
+    const span = el("span", { class: "stop-name" }, name), C = window.CityLayers, key = C && C.cityOf(name);
+    if (key) { const lm = C.landmark(key), sp = C.stripe(key); if (lm) span.append(lm); if (sp) span.append(sp); span.title = C.CITIES[key].label; }
+    return span;
+  }
+  // A stay's label: its name, skipping a leading date part ("Fri 4 Dec · …").
+  const DATEISH = /^(day \d|mon|tue|wed|thu|fri|sat|sun)\b/i;
+  function stayLabel(title) { const parts = String(title || "").split(" · "); return parts.find((p) => !DATEISH.test(p.trim())) || parts[0]; }
+  // The trip line (S2), after the review of 10 Nov: stays sit at a stop only when the parts carry days (stays
+  // before the first move at the start); nights shown only as the stay's own words; a broken hard rule named once
+  // on the line, never guessed onto a segment; a change of station between two moves drawn as "across town".
+  function tripLine(o, cls) {
+    const legs = (Array.isArray(o.legs) ? o.legs : []).map((g, i) => ({ g, i, day: Number(g.day) || 0 }));
+    const moves = legs.filter((x) => x.g.by === "rail" || x.g.by === "air").sort((a, b) => a.day - b.day || a.i - b.i);
+    if (!moves.length) return null;
+    const dated = legs.every((x) => x.day > 0);
+    const stays = legs.filter((x) => x.g.by === "stay");
+    const ol = el("ol", { class: "trip-line " + cls, "aria-label": "The trip as a line: stops and the trains or flights between them" });
+    const broken = (Array.isArray(o.tier_a) ? o.tier_a : []).filter((r) => r && r.ok === false);
+    if (broken.length) ol.append(el("li", { class: "line-warn small" }, el("strong", {}, "Breaks a hard rule: "), broken.map((r) => String(r.rule || "") + (r.figure ? " (" + String(r.figure) + ")" : "")).join("; ")));
+    const stayAt = (from, to) => dated ? stays.filter((s) => s.day >= from && (to == null || s.day < to)) : [];
+    const stopLi = (name, here, extra) => {
+      const li = el("li", { class: "stop" + (extra ? " " + extra : "") }, el("span", { class: "dot", "aria-hidden": "true" }), stopName(name));
+      if (here.length) li.append(el("span", { class: "stop-stay small" }, here.map((s) => stayLabel(s.g.title)).join("; ")));
+      return li;
+    };
+    const first = legEnds(moves[0].g.title);
+    ol.append(stopLi(first ? first[0] : "Start", stayAt(-Infinity, moves[0].day), "start"));
+    let prev = first ? first[0] : null;
+    moves.forEach((x, k) => {
+      const ends = legEnds(x.g.title), pts = strs(x.g.points, 1), next = moves[k + 1];
+      if (k > 0 && ends && prev && ends[0] !== prev) {
+        ol.append(el("li", { class: "seg local" }, el("span", { class: "seg-mode" }, "Across town"), el("span", { class: "seg-what small" }, "from " + prev + " to " + ends[0])));
+        ol.append(stopLi(ends[0], [], ""));
+      }
+      ol.append(el("li", { class: "seg " + (x.g.by === "air" ? "air" : "rail") },
+        el("span", { class: "seg-mode" }, x.g.by === "air" ? "Flight" : "Train"),
+        el("span", { class: "seg-what small" }, [x.day ? "Day " + x.day : "", pts[0] || (ends ? "" : String(x.g.title || ""))].filter(Boolean).join(" · "))));
+      const name = ends ? ends[1] : "Stop " + (k + 1);
+      ol.append(stopLi(name, stayAt(x.day, next ? next.day : null), k === moves.length - 1 ? "end" : ""));
+      prev = ends ? ends[1] : null;
+    });
+    return ol;
+  }
   function optionView(o) {
     const v = el("div", { class: "option" });
     if (o.tagline) v.append(el("p", { class: "tagline" }, o.tagline));
+    const bp = current ? (briefs[current.id] || {}).payload || {} : {};
+    const line = tripLine(o, current ? livery(current.id, bp.country) : "lv-it");
+    if (line) v.append(el("h4", {}, "The line"), line);
     const m = el("div", { class: "metrics" });
     if (num(o.nights) !== null) m.append(el("div", { class: "metric" }, el("span", { class: "big" }, num(o.nights)), el("span", { class: "small muted" }, o.nights === 1 ? "night" : "nights")));
     if (num(o.carbon_kg_pppd, 1) !== null) {

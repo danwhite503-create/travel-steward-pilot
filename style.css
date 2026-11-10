@@ -239,6 +239,8 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .tier-a.small li{padding:4px 0}
 .tier-a.small li{flex-wrap:nowrap}
 .tier-a .fig{margin-left:auto;text-align:right;white-space:nowrap}
+/* a long figure wraps under its rule on a narrow screen instead of pushing the page sideways (overnight run, 10 Nov) */
+.tier-a.small li{flex-wrap:wrap}.tier-a .grow{min-width:0}.tier-a .fig{white-space:normal;max-width:100%}
 .tradeoffs.small li,.gaps.small li{padding:3px 0 3px 18px}
 .tradeoffs.small li::before{top:11px}
 .gaps.small li::before{top:9px}
@@ -407,3 +409,63 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .plan-chip.stale{background:var(--orange);border-color:var(--orange);color:#000}
 .place-add{gap:.5rem;align-items:center}
 .place-add input{flex:1;min-width:0}
+/* talk to the steward (D-557, S1) */
+.talk .thread{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto}
+.talk .msg{max-width:88%;padding:8px 11px;border-radius:14px;border:1px solid var(--rule);background:var(--surface)}
+.talk .msg.me{align-self:flex-end;background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.talk .msg-who{font-size:var(--step--1);font-weight:700;margin-bottom:2px}
+.talk .msg-body{white-space:pre-wrap}
+.talk .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.talk .chip{border:1px solid var(--ink);border-radius:999px;padding:4px 10px;background:var(--surface);color:var(--ink);font-size:var(--step--1)}
+.badge-sugg{display:inline-block;font-size:.75rem;font-weight:700;border:1px solid #b07a00;color:#7a5400;border-radius:4px;padding:0 4px}
+.talk-form{display:flex;gap:8px}
+.talk-form input{flex:1;min-width:0}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* the trip line (D-557, S2): a vertical rail line in the trip's livery colours */
+.trip-line{list-style:none;margin:6px 0 14px;padding:0 0 0 4px;--line:var(--it-a);--line2:var(--it-b)}
+.trip-line.lv-jp{--line:var(--jp-a);--line2:var(--jp-a)}.trip-line.lv-es{--line:var(--es-a);--line2:var(--es-b)}.trip-line.lv-fr{--line:var(--fr-a);--line2:var(--fr-b)}
+.trip-line li{position:relative;padding-left:32px}
+.trip-line li::before{content:"";position:absolute;left:9px;top:0;bottom:0;width:5px;background:var(--line);border-right:2px solid var(--line2);box-sizing:content-box}
+.trip-line .stop{padding-top:2px;padding-bottom:8px}
+.trip-line .stop.start::before{top:11px}
+.trip-line .stop.end::before{bottom:auto;height:11px}
+.trip-line .stop .dot{position:absolute;left:2px;top:2px;width:19px;height:19px;border-radius:50%;background:var(--surface);border:4px solid var(--line);box-sizing:border-box;z-index:1}
+.trip-line .stop.start .dot,.trip-line .stop.end .dot{background:var(--line)}
+.trip-line .stop-name{display:block;font-family:var(--board);font-weight:700;font-size:1.1rem;line-height:19px}
+.trip-line .stop-stay{display:block;color:var(--muted)}
+.trip-line .seg{padding-top:2px;padding-bottom:10px}
+.trip-line .seg.air::before{background:repeating-linear-gradient(var(--line) 0 6px,transparent 6px 11px);border-right:0}
+.trip-line .seg.local::before{background:repeating-linear-gradient(var(--line) 0 2px,transparent 2px 6px);border-right:0}
+.trip-line .line-warn{padding-left:0;margin-bottom:8px;color:var(--danger)}.trip-line .line-warn::before{display:none}
+.trip-line .stop-name{overflow-wrap:anywhere}
+.trip-line .seg-mode{font-family:var(--board);font-weight:600;text-transform:uppercase;letter-spacing:.06em;font-size:.8rem;margin-right:6px}
+.trip-line .seg-what{color:var(--muted)}
+
+/* city layers (D-557, S3): each stop's own colours and a line drawing; colours only, no operators' marks */
+.trip-line .stop-name .landmark{width:26px;height:26px;vertical-align:-6px;margin-left:6px}
+.trip-line .landmark path{stroke:var(--ink)}
+.city-stripe{display:inline-flex;gap:2px;margin-left:6px;vertical-align:middle}.city-stripe i{display:block;width:12px;height:5px;border-radius:2px}
+.city-stripe.city-london i:nth-child(1){background:#a4343a}
+.city-stripe.city-london i:nth-child(2){background:#2c5f9e}
+.city-stripe.city-london i:nth-child(3){background:#4a7c3a}
+.city-stripe.city-paris i:nth-child(1){background:#d9a400}
+.city-stripe.city-paris i:nth-child(2){background:#2b4c8c}
+.city-stripe.city-paris i:nth-child(3){background:#8a5a2b}
+.city-stripe.city-amsterdam i:nth-child(1){background:#b8402f}
+.city-stripe.city-amsterdam i:nth-child(2){background:#2a5c8f}
+.city-stripe.city-amsterdam i:nth-child(3){background:#d98a2a}
+.city-stripe.city-boston i:nth-child(1){background:#9b2335}
+.city-stripe.city-boston i:nth-child(2){background:#2f6e5e}
+.city-stripe.city-boston i:nth-child(3){background:#c9822b}
+.city-stripe.city-new-york i:nth-child(1){background:#334f8c}
+.city-stripe.city-new-york i:nth-child(2){background:#c96a3f}
+.city-stripe.city-new-york i:nth-child(3){background:#5a8f4a}
+.city-stripe.city-lisbon i:nth-child(1){background:#e0a21c}
+.city-stripe.city-lisbon i:nth-child(2){background:#a83c3c}
+.city-stripe.city-lisbon i:nth-child(3){background:#1f6b5c}
+.talk .handoff{align-self:center;color:var(--muted);border:1px dashed var(--rule);border-radius:999px;padding:2px 10px}
+/* friction pass (10 Nov): the thread first on a trip, shorter on a phone; small links get a full-size tap area */
+@media (max-width:600px){.talk .thread{max-height:42vh}}
+#trip-detail button.link,#trip-detail summary{min-height:40px;display:inline-flex;align-items:center}
+#trip-detail .ticket button.link{min-height:32px}
