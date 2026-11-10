@@ -11,6 +11,7 @@ window.PILOT_CONFIG = {
   CHATS_TRAINING: "aren't",          // training turned off by Claude at his word, 9 Nov (checked after reload)
   // A label starting "draft" shows the draft banner and refuses consent.
   // Set the approved label (e.g. "pilot-2026-11-v1") once the notice is approved.
-  NOTICE_VERSION: "pilot-2026-11-v2",
-  NOTICE_URL: "notice.html"
+  NOTICE_VERSION: "pilot-2026-11-v3",
+  NOTICE_URL: "notice.html",
+  STEWARD_LIVE: true 
 };
