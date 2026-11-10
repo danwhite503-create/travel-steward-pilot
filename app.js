@@ -442,9 +442,12 @@
     const nk = neverKept(text);
     if (nk) { note.textContent = "Not sent: this looks like " + nk + ", which the pilot never keeps. Reword it and try again."; return; }
     $("#start-send").disabled = true; note.textContent = "Setting up your trip…";
-    const { data, error } = await sb.from("trips").insert({ title: workingTitle(text), date_from: null, date_to: null }).select("id").single();
+    // The id is made here and the insert asks for nothing back: returning the new row would run the read rule, which
+    // can't see a trip inside the statement that creates it, and the store then refuses the insert (his phone, 10 Nov).
+    const data = { id: crypto.randomUUID() };
+    const { error } = await sb.from("trips").insert({ id: data.id, title: workingTitle(text), date_from: null, date_to: null });
     $("#start-send").disabled = false;
-    if (error || !data) { note.textContent = error ? explain(error) : "The trip wasn't saved. Try again."; return; }
+    if (error) { note.textContent = explain(error); return; }
     $("#start-text").value = ""; note.textContent = "";
     await loadTrips(); await openTrip(data.id);
     $("#talk").scrollIntoView({ block: "start" });
