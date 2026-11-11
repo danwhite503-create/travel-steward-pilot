@@ -587,10 +587,12 @@
     if (error) {
       const st = error.context && error.context.status;
       let why = "Arlo couldn't answer just now. Try again in a minute.";
-      if (st === 503 || st === 404) why = "The live steward isn't switched on yet. The brief below still works, and the planner reads it when you send the trip.";
+      if (st === 503) why = "The live steward isn't switched on yet. The brief below still works, and the planner reads it when you send the trip.";
+      else if (st === 404) why = "Arlo couldn't find this trip. Go back to All trips and open it again.";
       else if (st === 400) why = "That message wasn't sent: it was empty, too long, or looked like a number or code the pilot never keeps. Reword it and try again.";
       else if (st === 403) why = "Only the trip's owner and editors can write here.";
       else if (st === 429) why = "That's today's limit for messages. Try again tomorrow.";
+      try { const b = error.context && typeof error.context.json === "function" ? await error.context.clone().json() : null; if (b && typeof b.error === "string" && st !== 400) why = b.error; } catch (_) { /* keep ours */ }
       note.textContent = why;
       return;
     }
