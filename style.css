@@ -499,10 +499,22 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .start-tools{display:flex;align-items:center;gap:10px;margin-top:10px}
 .talk-form .mic{margin-right:6px}
 
-.start .tiles-head{margin:12px 0 6px;font:600 .75rem/1.2 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.start .chips.ideas,.start .chips.budget{margin:0}
-.start .chip.idea{border-color:var(--green);border-width:2px}
-.start .chip.more{border-style:dashed;color:var(--muted)}
-.start .chip.money[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.tiles .tiles-head{margin:12px 0 6px;font:600 .75rem/1.2 var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tiles .chips.ideas,.tiles .chips.budget{margin:0}
+.tiles .chip.idea{border-color:var(--green);border-width:2px}
+.tiles .chip.more{border-style:dashed;color:var(--muted)}
+.tiles .chip.money[aria-pressed=true]{background:var(--ink);color:var(--bg)}
 
 .head-signout{margin-left:auto;flex:none;background:transparent;color:var(--sign-ink);border:1px solid currentColor;border-radius:999px;padding:6px 12px;min-height:40px;font-size:var(--step--1)}
+
+.doors{display:grid;gap:10px;margin:12px 0 6px}
+.door{display:flex;gap:14px;align-items:center;text-align:left;width:100%;min-height:64px;padding:14px 16px;background:var(--surface);color:var(--ink);border:2px solid var(--ink);border-radius:12px;font:inherit}
+.door strong{display:block;font-size:1.08rem}
+.door-sub{display:block;font-size:var(--step--1);color:var(--muted);margin-top:2px}
+.door-dot{flex:none;width:22px;height:22px;border-radius:50%;background:var(--surface);border:6px solid var(--c)}
+.door:active{transform:translateY(1px)}
+.door-event{margin:4px 0 0;min-height:40px}
+.or-line{display:flex;align-items:center;gap:10px;margin:14px 0 10px;color:var(--muted);font-size:var(--step--1)}
+.or-line::before,.or-line::after{content:"";flex:1;height:1px;background:var(--rule)}
+#explore-tiles{margin:6px 0 12px}
+.linkish{background:none;border:0;padding:0;color:var(--ink);text-decoration:underline;font:inherit;font-size:var(--step--1);cursor:pointer}

@@ -415,23 +415,26 @@
   const BUDGET = [["Shoestring", "on a tight budget"], ["Mid-range", "on a mid-range budget"], ["Treat", "as a treat, budget flexible"]];
   const shuffle = (a) => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
   const addToStart = (words) => { const t = $("#start-text"); const v = t.value.trim(); t.value = v ? v.replace(/[.,;]?$/, ", ") + words : words.charAt(0).toUpperCase() + words.slice(1); t.focus(); };
-  function paintStartTiles() {
-    const box = $("#start-chips"); if (!box) return;
+  // On the explore path the ideas and budget tiles sit in the chat: a tap is a message to Arlo (his choice, 11 Nov:
+  // every tile starts or continues the chat; nothing just adds words to a box).
+  function paintExploreTiles() {
+    const box = $("#explore-tiles"); if (!box) return;
     const m = new Date().getMonth(), month = new Date().toLocaleString("en-US", { month: "long" });
-    const ideas = el("div", { class: "chips ideas" }, ...shuffle(SEASON[m]).slice(0, 3).map((c) =>
-      el("button", { type: "button", class: "chip idea", onclick: () => addToStart(c.charAt(0).toLowerCase() + c.slice(1)) }, c)),
-      el("button", { type: "button", class: "chip more", onclick: paintStartTiles, "aria-label": "Show more ideas" }, "More ideas"));
-    const money = el("div", { class: "chips budget", role: "group", "aria-label": "Budget" }, ...BUDGET.map(([label, words]) =>
-      el("button", { type: "button", class: "chip money", onclick: (e) => { addToStart(words); for (const b of e.target.parentNode.children) b.setAttribute("aria-pressed", String(b === e.target)); }, "aria-pressed": "false" }, label)));
-    box.replaceChildren(el("p", { class: "tiles-head" }, "Ideas for " + month), ideas, el("p", { class: "tiles-head" }, "Budget"), money);
+    const send = (t) => { box.hidden = true; sendTalk(t); };
+    box.replaceChildren(
+      el("p", { class: "tiles-head" }, "Ideas for " + month),
+      el("div", { class: "chips ideas" }, ...shuffle(SEASON[m]).slice(0, 3).map((c) => el("button", { type: "button", class: "chip idea", onclick: () => send("Something like: " + c.charAt(0).toLowerCase() + c.slice(1)) }, c)),
+        el("button", { type: "button", class: "chip more", onclick: paintExploreTiles, "aria-label": "Show more ideas" }, "More ideas")),
+      el("p", { class: "tiles-head" }, "Budget"),
+      el("div", { class: "chips budget", role: "group", "aria-label": "Budget" }, ...BUDGET.map(([label, words]) => el("button", { type: "button", class: "chip money", onclick: () => send("Budget: " + words) }, label))));
   }
+
   // Arlo first (his direction, 10 Nov 10:51 ET): with the live steward on, a new trip starts as a message to Arlo,
   // not a form. The trip is made with the message as a working title; Arlo names it and sets its dates (set_trip).
   if (CFG.STEWARD_LIVE === true) {
     $("#trip-new").hidden = true; $("#trip-start").hidden = false;
     const T = window.TravelTeam, av = $("#start-avatar");
     if (T && T.svg && av) { av.className = "face"; av.innerHTML = T.svg("steward"); }
-    paintStartTiles();
   }
   const workingTitle = (text) => { const t = text.replace(/\s+/g, " ").trim(); if (t.length <= 60) return t; const cut = t.slice(0, 60); return cut.slice(0, cut.lastIndexOf(" ") > 30 ? cut.lastIndexOf(" ") : 60) + "…"; };
   // Voice to text (his choice B, 10 Nov 11:35 ET): the browser's own speech service turns speech into text in the box;
@@ -461,6 +464,24 @@
       try { rec.start(); } catch (_) { rec = null; recBtn = null; btn.classList.remove("on"); micNote(btn, "The mic couldn't start. Type instead."); }
     });
   }
+  const DOORS = { mind: ["New trip", "I have a trip in mind."], explore: ["Exploring ideas", "Help me find somewhere to go."], event: ["Around an event", "I'm planning a trip around an event."] };
+  async function startTrip(title, text) {
+    const note = $("#start-note");
+    $("#start-send").disabled = true; for (const d of document.querySelectorAll("[data-door]")) d.disabled = true;
+    note.textContent = "Setting up your trip…";
+    // The id is made here and the insert asks for nothing back (see below).
+    const id = crypto.randomUUID();
+    const { error } = await sb.from("trips").insert({ id, title, date_from: null, date_to: null });
+    $("#start-send").disabled = false; for (const d of document.querySelectorAll("[data-door]")) d.disabled = false;
+    if (error) { note.textContent = explain(error); return false; }
+    note.textContent = "";
+    await loadTrips(); await openTrip(id);
+    $("#talk").scrollIntoView({ block: "start" });
+    await sendTalk(text);
+    return true;
+  }
+  for (const d of document.querySelectorAll("[data-door]")) d.addEventListener("click", () => { const [t, m] = DOORS[d.dataset.door]; startTrip(t, m); });
+  { const sub = $("#door-explore-sub"); if (sub) sub.textContent = "Ideas for " + new Date().toLocaleString("en-US", { month: "long" }) + ", by budget and feel"; }
   $("#trip-start").addEventListener("submit", async (e) => {
     e.preventDefault();
     stopMic();
@@ -468,17 +489,7 @@
     if (!text) { note.textContent = "Tell Arlo a little about the trip first."; return; }
     const nk = neverKept(text);
     if (nk) { note.textContent = "Not sent: this looks like " + nk + ", which the pilot never keeps. Reword it and try again."; return; }
-    $("#start-send").disabled = true; note.textContent = "Setting up your trip…";
-    // The id is made here and the insert asks for nothing back: returning the new row would run the read rule, which
-    // can't see a trip inside the statement that creates it, and the store then refuses the insert (his phone, 10 Nov).
-    const data = { id: crypto.randomUUID() };
-    const { error } = await sb.from("trips").insert({ id: data.id, title: workingTitle(text), date_from: null, date_to: null });
-    $("#start-send").disabled = false;
-    if (error) { note.textContent = explain(error); return; }
-    $("#start-text").value = ""; note.textContent = "";
-    await loadTrips(); await openTrip(data.id);
-    $("#talk").scrollIntoView({ block: "start" });
-    await sendTalk(text);
+    if (await startTrip(workingTitle(text), text)) $("#start-text").value = "";
   });
   $("#trip-new").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -563,6 +574,13 @@
       ol.append(li);
     });
     ol.scrollTop = ol.scrollHeight;
+    // The explore path: while the trip has no places yet and Arlo's last word offers no choices of its own.
+    const ex = $("#explore-tiles");
+    if (ex) {
+      const lastRow = rows[rows.length - 1];
+      const exploring = current.title === "Exploring ideas" && CFG.STEWARD_LIVE === true && lastRow && lastRow.kind !== "user" && !(Array.isArray(lastRow.chips) && lastRow.chips.length);
+      ex.hidden = !exploring; if (exploring) paintExploreTiles();
+    }
   }
   // The never-kept check, on the page too (overnight runs, 10 Nov): a message carrying such a value never leaves the
   // phone, and the reason is named. The same patterns as the database and the function; it works by pattern.

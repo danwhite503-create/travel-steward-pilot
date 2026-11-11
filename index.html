@@ -6,14 +6,14 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data:; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Trip pilot</title>
-<link rel="stylesheet" href="style.css?v=20261110c">
+<link rel="stylesheet" href="style.css?v=20261111a">
 <script src="config.js"></script>
 <script src="vendor/supabase-js-2.45.4/supabase.js"></script>
-<script src="avatar.js?v=20261110c" defer></script>
-<script src="team.js?v=20261110c" defer></script>
-<script src="cities.js?v=20261110c" defer></script>
-<script src="citylayers.js?v=20261110c" defer></script>
-<script src="app.js?v=20261110c" defer></script>
+<script src="avatar.js?v=20261111a" defer></script>
+<script src="team.js?v=20261111a" defer></script>
+<script src="cities.js?v=20261111a" defer></script>
+<script src="citylayers.js?v=20261111a" defer></script>
+<script src="app.js?v=20261111a" defer></script>
 </head>
 <body>
 <div id="draft-banner" class="banner" hidden>Draft: this notice hasn't been approved yet, so sign-up is off.</div>
@@ -94,11 +94,16 @@
         <ul id="trip-list" class="list trips"></ul>
         <form id="trip-start" class="panel talk start" hidden>
           <div class="start-head"><span class="avatar-slot" id="start-avatar" aria-hidden="true"></span><div><h3>Start a trip with Arlo</h3>
-          <p class="muted small">Tell him where, when and who in your own words. He sets up the trip, then asks one thing at a time.</p></div></div>
+          <p class="muted small">Pick a way in, or just tell him. He sets up the trip, then asks one thing at a time.</p></div></div>
+          <div class="doors" role="group" aria-label="How would you like to start?">
+            <button type="button" class="door" data-door="mind"><span class="door-dot s-red" aria-hidden="true"></span><span><strong>I have a trip in mind</strong><span class="door-sub">Tell Arlo where, when and who</span></span></button>
+            <button type="button" class="door" data-door="explore"><span class="door-dot s-green" aria-hidden="true"></span><span><strong>Help me find somewhere</strong><span class="door-sub" id="door-explore-sub">Ideas by season, budget and feel</span></span></button>
+          </div>
+          <button type="button" class="linkish door-event" data-door="event">Planning around an event?</button>
+          <p class="or-line"><span>or just tell him</span></p>
           <label class="sr-only" for="start-text">Tell Arlo about your trip</label>
           <textarea id="start-text" name="text" rows="3" maxlength="1000" placeholder="London to Paris in March, about a week, two of us"></textarea>
           <div class="start-tools"><button type="button" class="mic" data-for="start-text" aria-label="Speak instead of typing" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button><span class="muted small mic-hint" id="start-mic-hint"></span></div>
-          <div class="tiles" id="start-chips"></div>
           <button type="submit" id="start-send">Start with Arlo</button>
           <p class="muted small" id="start-note" aria-live="polite"></p>
         </form>
@@ -133,6 +138,7 @@
           <h3>Talk to Arlo, your steward</h3>
           <p class="muted small" id="talk-intro">Tell Arlo about the trip in your own words. He asks one thing at a time and fills in the trip brief as you go. Places, prices and times he mentions are suggestions until the team checks them.</p>
           <ol id="thread" class="thread" aria-live="polite"></ol>
+          <div class="tiles" id="explore-tiles" hidden></div>
           <form id="talk-form" class="talk-form">
             <label class="sr-only" for="talk-text">Message Arlo</label>
             <input id="talk-text" name="text" maxlength="1000" autocomplete="off" placeholder="Ask or tell Arlo…" enterkeyhint="send">
