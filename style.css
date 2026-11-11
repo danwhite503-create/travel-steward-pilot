@@ -518,3 +518,7 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .or-line::before,.or-line::after{content:"";flex:1;height:1px;background:var(--rule)}
 #explore-tiles{margin:6px 0 12px}
 .linkish{background:none;border:0;padding:0;color:var(--ink);text-decoration:underline;font:inherit;font-size:var(--step--1);cursor:pointer}
+
+.msg.proposal{border:2px dashed var(--ink)}
+.badge-prop{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:999px;background:var(--yellow);color:#111}
+.chip.yes{background:var(--ink);color:var(--bg);border-color:var(--ink)}

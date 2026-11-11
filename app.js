@@ -555,7 +555,7 @@
   // then Arlo's reply and any brief fields it filled. Nothing is sent from here but the message and the trip id.
   async function loadThread() {
     const ol = $("#thread"); if (!ol || !current) return;
-    const { data, error } = await sb.from("messages").select("id, author, agent, kind, body, chips, created_at").eq("trip_id", current.id).order("created_at");
+    const { data, error } = await sb.from("messages").select("id, author, agent, kind, body, chips, payload, created_at").eq("trip_id", current.id).order("created_at");
     if (error) { ol.replaceChildren(); return; }
     ol.replaceChildren();
     const rows = data || [];
@@ -564,11 +564,13 @@
     rows.forEach((m, i) => {
       const mine = m.kind === "user";
       if (m.kind === "handoff") { ol.append(el("li", { class: "handoff small" }, m.body)); return; }
+      if (m.kind === "proposal") { ol.append(proposalCard(m, i === rows.length - 1)); return; }
       const tm = T && T.TEAM.find((x) => x.key === m.agent);
       const who = mine ? (m.author === user.id ? "You" : "Someone on this trip") : tm ? tm.name + " · " + (m.agent === "steward" ? "Steward" : tm.role) : "The team";
       const li = el("li", { class: "msg " + (mine ? "me" : "agent") }, el("div", { class: "msg-who" }, who), el("div", { class: "msg-body" }, m.body));
       if (m.kind === "suggestion") li.querySelector(".msg-who").append(" ", el("span", { class: "badge-sugg" }, "suggestion"));
-      const last = i === rows.length - 1;
+      // Arlo's choices stay tappable when only a proposal card follows them (D-558).
+      const last = rows.slice(i + 1).every((r) => r.kind === "proposal");
       if (!mine && last && Array.isArray(m.chips) && m.chips.length && !$("#talk-text").disabled)
         li.append(el("div", { class: "chips" }, ...m.chips.map((c) => el("button", { type: "button", class: "chip", onclick: () => sendTalk(c) }, c))));
       ol.append(li);
@@ -581,6 +583,40 @@
       const exploring = current.title === "Exploring ideas" && CFG.STEWARD_LIVE === true && lastRow && lastRow.kind !== "user" && !(Array.isArray(lastRow.chips) && lastRow.chips.length);
       ex.hidden = !exploring; if (exploring) paintExploreTiles();
     }
+  }
+  // Arlo's proposals (D-558): a card that writes nothing until the owner taps it; then the page writes the record with
+  // the owner's own sign-in (row security applies) and tells Arlo in the thread, so the chat carries on.
+  function proposalCard(m, last) {
+    const p = m.payload || {}, mine = current && user && current.owner === user.id;
+    const li = el("li", { class: "msg agent proposal" }, el("div", { class: "msg-who" }, "Arlo · Steward ", el("span", { class: "badge-prop" }, "to save")), el("div", { class: "msg-body" }, m.body));
+    if (p.type === "traveler") li.append(el("p", { class: "muted small" }, "Only add people who've agreed to be on the pilot, as the notice asks."));
+    if (!last || !mine || $("#talk-text").disabled) return li;
+    const note = $("#talk-note");
+    const yes = el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? "Add" : "Save");
+    const no = el("button", { type: "button", class: "chip" }, "Not now");
+    yes.addEventListener("click", async () => {
+      yes.disabled = no.disabled = true;
+      let error = null, said = "";
+      if (p.type === "traveler") {
+        const row = { first_name: p.first_name }; if (p.last_name) row.last_name = p.last_name; if (p.nationality) row.nationality = p.nationality;
+        ({ error } = await sb.from("travellers").insert(row)); said = "Added " + p.first_name + " as a traveler.";
+      } else if (p.type === "pref") {
+        const cur = await sb.from("prefs").select("items").eq("section", p.section).maybeSingle();
+        const items = ((cur.data && cur.data.items) || []).concat([{ label: p.line }]);
+        ({ error } = await sb.from("prefs").upsert({ user_id: user.id, section: p.section, items, updated_at: new Date().toISOString() }, { onConflict: "user_id,section" }));
+        said = "Saved to my preferences: " + p.line;
+      } else if (p.type === "home") {
+        const cur = await sb.from("profiles").select("display_name").maybeSingle();
+        const name = (cur.data && cur.data.display_name) || (user.email || "Me").split("@")[0];
+        ({ error } = await sb.from("profiles").upsert({ user_id: user.id, display_name: name, home_city: p.city, updated_at: new Date().toISOString() }, { onConflict: "user_id" }));
+        said = "Saved " + p.city + " as my home city.";
+      }
+      if (error) { yes.disabled = no.disabled = false; note.textContent = explain(error); return; }
+      await sendTalk(said);
+    });
+    no.addEventListener("click", () => { yes.disabled = no.disabled = true; sendTalk("Not now."); });
+    li.append(el("div", { class: "chips" }, yes, no));
+    return li;
   }
   // The never-kept check, on the page too (overnight runs, 10 Nov): a message carrying such a value never leaves the
   // phone, and the reason is named. The same patterns as the database and the function; it works by pattern.
