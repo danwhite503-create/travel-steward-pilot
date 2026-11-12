@@ -527,10 +527,51 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .packing h3 { margin: 0 0 .25rem; }
 .pack-list { list-style: none; margin: .5rem 0; padding: 0; }
 .pack-list .pack-cat { font-weight: 600; margin: .75rem 0 .25rem; font-size: .9rem; opacity: .8; }
-.pack-list .pack-item { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; padding: .35rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
-.pack-list .pack-item label { display: flex; align-items: center; gap: .6rem; flex: 1 1 60%; min-height: 44px; cursor: pointer; }
+.pack-list .pack-item { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: .5rem; padding: .25rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+.pack-list .pack-item label { display: flex; align-items: center; gap: .6rem; min-height: 44px; cursor: pointer; min-width: 0; }
+.pack-list .pack-item > button.link { grid-column: 2; grid-row: 1; min-height: 44px; padding: 0 .25rem; }
 .pack-list .pack-item input[type=checkbox] { width: 1.25rem; height: 1.25rem; flex: none; }
 .pack-list .pack-item.got .grow { text-decoration: line-through; opacity: .6; }
-.pack-list .pack-why { flex-basis: 100%; padding-left: 1.85rem; }
+.pack-list .pack-why { grid-column: 1 / -1; padding: 0 0 .35rem 1.85rem; margin-top: -.5rem; }
 .pack-add { display: flex; gap: .5rem; }
 .pack-add input { flex: 1; min-width: 0; }
+
+/* The team in one chat, and the trip's tabs (11 Nov 21:08) */
+.trip-body{display:flex;flex-direction:column-reverse;gap:12px;margin-top:12px}
+.trip-main{min-width:0}
+.trip-tabs{display:flex;gap:2px;border-bottom:2px solid var(--ink);overflow-x:auto;scrollbar-width:none;position:sticky;top:0;background:var(--bg);z-index:2}
+.trip-tabs::-webkit-scrollbar{display:none}
+.trip-tabs button{flex:0 0 auto;min-height:44px;padding:10px 14px;border:0;border-radius:0;background:transparent;color:var(--muted);font:600 var(--step--1)/1 var(--sans);letter-spacing:.02em;position:relative;cursor:pointer}
+.trip-tabs button.on{background:var(--ink);color:var(--bg)}
+.trip-tabs .tab-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ee352e;margin-left:6px;vertical-align:middle}
+.trip-tabs .tab-dot[hidden]{display:none}
+.tab-panel{padding-top:12px}
+.tab-panel > *:first-child{margin-top:0}
+.team-rail{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:none;align-items:flex-end}
+.team-rail::-webkit-scrollbar{display:none}
+.team-rail .mate{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:56px;padding:4px;border:0;background:transparent;color:var(--ink);cursor:pointer;opacity:.45;transition:opacity .2s,transform .2s}
+.team-rail .mate .face{display:block;width:40px;height:40px;transition:width .2s,height .2s}
+.team-rail .mate .face svg{width:100%;height:100%;display:block}
+.team-rail .mate-name{font:600 12px/1.1 var(--sans)}
+.team-rail .mate-role{font:400 11px/1.1 var(--sans);color:var(--muted);display:none}
+.team-rail .mate.speaking{opacity:1}
+.team-rail .mate.speaking .face{width:56px;height:56px;border-radius:50%;box-shadow:0 0 0 3px var(--bg),0 0 0 5px var(--ink)}
+.team-rail .mate.thinking .face{animation:mate-pulse 1.2s ease-in-out infinite}
+@keyframes mate-pulse{50%{transform:scale(.92)}}
+.team-rail .rail-note{display:none}
+.msg.agent{position:relative}
+.msg .msg-face{position:absolute;left:-6px;top:-10px;width:28px;height:28px;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px var(--surface)}
+.msg .msg-face svg{width:100%;height:100%;display:block}
+.msg.agent .msg-who{padding-left:20px}
+@media (min-width:900px){
+  .trip-body{flex-direction:row;align-items:flex-start;gap:24px}
+  .trip-main{flex:1}
+  .team-rail{flex:0 0 170px;flex-direction:column;align-items:stretch;overflow:visible;position:sticky;top:12px;padding-top:56px}
+  .team-rail .mate{flex-direction:row;gap:10px;text-align:left;justify-content:flex-start;min-width:0}
+  .team-rail .mate > span:not(.face){display:block}
+  .team-rail .mate .mate-role{display:block}
+  .team-rail .mate{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:10px;align-items:center}
+  .team-rail .mate .face{grid-row:1/3}
+  .team-rail .rail-note{display:block;margin-top:8px}
+}
+@media (prefers-reduced-motion:reduce){.team-rail .mate,.team-rail .mate .face{transition:none}.team-rail .mate.thinking .face{animation:none}}

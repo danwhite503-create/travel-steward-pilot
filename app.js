@@ -299,6 +299,88 @@
     }
   })();
 
+  // ---------- the team in one chat, and the trip's tabs (his direction, 11 Nov 21:08) ----------
+  // With the live steward on, a trip opens on tabs: Chat · Trip · Wallet & passport · Suitcase. The chat stays one
+  // thread; the team sits beside it (a strip on a phone, a column on a computer) and whoever spoke last comes forward.
+  // The other parts of the trip page are moved into the tabs, not rebuilt, so every existing control keeps working.
+  const LIVE_TEAM = ["steward", "dining", "events", "around", "suitcase"];
+  const TAB_KEYS = ["chat", "trip", "wallet", "suitcase"];
+  const TAB_LABEL = { chat: "Chat", trip: "Trip", wallet: "Wallet & passport", suitcase: "Suitcase" };
+  let tabsOn = false;
+  function setupTripTabs() {
+    if (tabsOn || CFG.STEWARD_LIVE !== true) return;
+    const detail = $("#trip-detail"), anchor = $("#trip-edit");
+    if (!detail || !anchor) return;
+    tabsOn = true;
+    const nav = el("div", { class: "trip-tabs", id: "trip-tabs", role: "tablist", "aria-label": "Trip sections" },
+      ...TAB_KEYS.map((k) => el("button", { type: "button", role: "tab", id: "tab-" + k, "aria-controls": "panel-" + k, "aria-selected": "false",
+        onclick: () => showTab(k) }, TAB_LABEL[k], el("span", { class: "tab-dot", hidden: "" }))));
+    const panels = TAB_KEYS.map((k) => el("div", { class: "tab-panel", id: "panel-" + k, role: "tabpanel", "aria-labelledby": "tab-" + k, hidden: "" }));
+    const P = Object.fromEntries(TAB_KEYS.map((k, i) => [k, panels[i]]));
+    const rail = el("aside", { class: "team-rail", id: "team-rail", "aria-label": "Your team in this chat" });
+    for (const key of LIVE_TEAM) {
+      const T = window.TravelTeam, m = T && T.TEAM.find((x) => x.key === key); if (!m) continue;
+      const face = el("span", { class: "face" }); face.innerHTML = T.svg(key);
+      rail.append(el("button", { type: "button", class: "mate", "data-agent": key, title: "Ask " + m.name + " (" + m.role + ")",
+        onclick: () => { showTab("chat"); const t = $("#talk-text"); if (t.disabled) return; if (key !== "steward" && !t.value.startsWith(m.name)) t.value = m.name + ", " + t.value; t.focus(); } },
+        face, el("span", { class: "mate-name" }, m.name), el("span", { class: "mate-role" }, key === "steward" ? "Steward" : m.role)));
+    }
+    rail.append(el("p", { class: "muted small rail-note" }, "Rail, flights, stays, carbon, booking and the inspector work behind the scenes on the plan."));
+    // Everything after the edit form moves: the chat to Chat, the suitcase to Suitcase, documents to Wallet, the rest to Trip.
+    const moving = []; for (let n = anchor.nextElementSibling; n; n = n.nextElementSibling) moving.push(n);
+    // The two warnings (plan out of date, missing passport dates) stay above the tabs, so no tab hides them.
+    let at = anchor;
+    for (const n of moving) {
+      if (n.id === "plan-stale" || n.id === "trip-docs") at = n;
+      else if (n.id === "talk") P.chat.append(n);
+      else if (n.id === "packing") P.suitcase.append(n);
+      else P.trip.append(n);
+    }
+    P.wallet.append(el("section", { class: "panel", id: "wallet-people", "aria-label": "Passports" }),
+      el("section", { class: "panel muted small", id: "wallet-later" }, "Bookings and points come here once the next version of the notice is approved: vendor, dates, amount and status, never booking references, ticket or member numbers."));
+    const body = el("div", { class: "trip-body" }, el("div", { class: "trip-main" }, nav, ...panels), rail);
+    at.after(body);
+    $("#talk h3").textContent = "Talk to your team";
+    $("#talk-intro").textContent = "One chat with the whole team. Arlo leads and brings in whoever a question is for; they fill the Trip, Wallet & passport and Suitcase tabs as you go. Places, prices and times are suggestions until the team checks them.";
+    $("#talk-text").placeholder = "Ask or tell the team…";
+    showTab("chat");
+  }
+  function showTab(k) {
+    if (!tabsOn) return;
+    for (const t of TAB_KEYS) {
+      const on = t === k;
+      $("#panel-" + t).hidden = !on;
+      const b = $("#tab-" + t); b.setAttribute("aria-selected", on ? "true" : "false"); b.classList.toggle("on", on);
+      if (on) b.querySelector(".tab-dot").hidden = true;
+    }
+  }
+  function dotTab(k) { if (tabsOn && !$("#tab-" + k).classList.contains("on")) $("#tab-" + k + " .tab-dot").hidden = false; }
+  // Who's speaking: the last team voice comes forward; while a message is out, Arlo is "thinking".
+  function paintRail(rows, thinking) {
+    if (!tabsOn) return;
+    const last = [...(rows || [])].reverse().find((m) => m.kind !== "user" && m.kind !== "handoff" && m.agent);
+    const lead = thinking ? "steward" : last ? last.agent : "steward";
+    for (const b of document.querySelectorAll("#team-rail .mate")) {
+      const on = b.dataset.agent === lead;
+      b.classList.toggle("speaking", on); b.classList.toggle("thinking", on && !!thinking);
+      b.setAttribute("aria-current", on ? "true" : "false");
+    }
+  }
+  let lastThread = [];
+  // Wallet & passport: the travelers going on this trip, with the passport expiry the pilot keeps (dates only).
+  function paintWallet(bp) {
+    const box = $("#wallet-people"); if (!box) return;
+    const going = new Set(Array.isArray(bp && bp.who) ? bp.who : []);
+    const rows = (travelerRows || []).filter((t) => going.has(t.id));
+    box.replaceChildren(el("h3", {}, "Passports"));
+    if (!rows.length) { box.append(el("p", { class: "muted small" }, "Tick who's going in the Trip tab's brief, and their passport expiry dates show here.")); return; }
+    const ul = el("ul", { class: "list" });
+    for (const t of rows) ul.append(el("li", {}, el("span", { class: "who" }, [t.first_name, t.last_name].filter(Boolean).join(" ")),
+      el("span", { class: "muted grow" }, [t.nationality, t.passport_expires ? "passport expires " + fmtDate(t.passport_expires).replace(/^[A-Za-z]{3}, /, "") : "passport expiry not added"].filter(Boolean).join(", "))));
+    box.append(ul, el("p", { class: "muted small" }, "Entry rules for the countries on the route are checked by the planning team at the source; Arlo's chat can't confirm them."));
+  }
+  setupTripTabs();
+
   // ---------- profile ----------
   async function loadProfile() {
     const { data, error } = await sb.from("profiles").select("display_name, home_city").maybeSingle();
@@ -545,7 +627,8 @@
     let canWrite = mine;
     if (!mine) { const m = await sb.from("trip_members").select("role").eq("trip_id", current.id).eq("user_id", user.id).maybeSingle(); canWrite = !!(m.data && m.data.role !== "viewer"); }
     $("#item-new").hidden = !canWrite; tripCanWrite = canWrite;
-    fillBrief(bp, canWrite); paintDocs(bp);
+    fillBrief(bp, canWrite); paintDocs(bp); paintWallet(bp);
+    if (tabsOn) { showTab("chat"); for (const k of TAB_KEYS) $("#tab-" + k + " .tab-dot").hidden = true; }
     $("#talk").hidden = CFG.STEWARD_LIVE !== true;   // shown only once he switches the live steward on (D-557)
     $("#talk-form").hidden = !canWrite; $("#talk-text").disabled = !canWrite; $("#talk-note").textContent = "";
     await Promise.all([loadItems(), loadShare(), loadThread()]);
@@ -567,7 +650,8 @@
       if (m.kind === "proposal") { ol.append(proposalCard(m, i === rows.length - 1)); return; }
       const tm = T && T.TEAM.find((x) => x.key === m.agent);
       const who = mine ? (m.author === user.id ? "You" : "Someone on this trip") : tm ? tm.name + " · " + (m.agent === "steward" ? "Steward" : tm.role) : "The team";
-      const li = el("li", { class: "msg " + (mine ? "me" : "agent") }, el("div", { class: "msg-who" }, who), el("div", { class: "msg-body" }, m.body));
+      const li = el("li", { class: "msg " + (mine ? "me" : "agent") + (tm && !mine ? " by-" + m.agent : "") }, el("div", { class: "msg-who" }, who), el("div", { class: "msg-body" }, m.body));
+      if (tabsOn && tm && !mine) { const f = el("span", { class: "msg-face", "aria-hidden": "true" }); f.innerHTML = T.svg(m.agent); li.prepend(f); }
       if (m.kind === "suggestion") li.querySelector(".msg-who").append(" ", el("span", { class: "badge-sugg" }, "suggestion"));
       // Arlo's choices stay tappable when only a proposal card follows them (D-558).
       const last = rows.slice(i + 1).every((r) => r.kind === "proposal");
@@ -576,6 +660,7 @@
       ol.append(li);
     });
     ol.scrollTop = ol.scrollHeight;
+    lastThread = rows; paintRail(rows, false);
     // The explore path: while the trip has no places yet and Arlo's last word offers no choices of its own.
     const ex = $("#explore-tiles");
     if (ex) {
@@ -635,9 +720,9 @@
     if (!text || talking || !current) return;
     const nk = neverKept(text);
     if (nk) { note.textContent = "Not sent: this looks like " + nk + ", which the pilot never keeps. Reword it and try again."; return; }
-    talking = true; $("#talk-form button").disabled = true; note.textContent = "Arlo is thinking…";
+    talking = true; $("#talk-form button").disabled = true; note.textContent = tabsOn ? "The team is thinking…" : "Arlo is thinking…"; paintRail(lastThread, true);
     const { data, error } = await sb.functions.invoke("steward-chat", { body: { trip_id: current.id, text } });
-    talking = false; $("#talk-form button").disabled = false;
+    talking = false; $("#talk-form button").disabled = false; paintRail(lastThread, false);
     if (error) {
       const st = error.context && error.context.status;
       let why = "Arlo couldn't answer just now. Try again in a minute.";
@@ -652,11 +737,11 @@
     }
     note.textContent = ""; $("#talk-text").value = "";
     await loadThread();
-    if (data && data.packing_changed) { await loadItems(); note.textContent = "Tove updated the packing list below."; }
+    if (data && data.packing_changed) { await loadItems(); note.textContent = tabsOn ? "Tove updated your Suitcase." : "Tove updated the packing list below."; dotTab("suitcase"); }
     if (data && (data.brief_changed || data.dates_changed)) {
       await loadTrips(); current = trips.find((t) => t.id === current.id) || current;
       const bp = (briefs[current.id] || {}).payload || {};
-      fillBrief(bp, !$("#brief button[type=submit]").disabled); paintDocs(bp); paintTicket();
+      fillBrief(bp, !$("#brief button[type=submit]").disabled); paintDocs(bp); paintWallet(bp); paintTicket(); dotTab("trip");
       // Say only what changed (his phone, 11 Nov: "name and dates" when only the name was set).
       const tc = data.title_changed, ds = data.dates_set;
       note.textContent = tc && ds ? "Arlo set the trip's name and dates. Edit trip changes them."
@@ -701,7 +786,7 @@
   function paintPacking(item) {
     const sec = $("#packing"); if (!sec) return;
     const items = item && item.payload && Array.isArray(item.payload.items) ? item.payload.items : [];
-    sec.hidden = !item && !tripCanWrite;
+    sec.hidden = !tabsOn && !item && !tripCanWrite;
     $("#pack-add").hidden = !tripCanWrite;
     const ul = $("#pack-list"); ul.replaceChildren();
     if (!items.length) { ul.append(el("li", { class: "empty" }, "Nothing yet. Ask Tove what to pack, or add your own.")); return; }
