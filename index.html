@@ -6,14 +6,14 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data:; form-action 'none'; base-uri 'none'">
 <meta name="referrer" content="no-referrer">
 <title>Trip pilot</title>
-<link rel="stylesheet" href="style.css?v=20261111b">
+<link rel="stylesheet" href="style.css?v=20261112a">
 <script src="config.js"></script>
 <script src="vendor/supabase-js-2.45.4/supabase.js"></script>
-<script src="avatar.js?v=20261111b" defer></script>
-<script src="team.js?v=20261111b" defer></script>
-<script src="cities.js?v=20261111b" defer></script>
-<script src="citylayers.js?v=20261111b" defer></script>
-<script src="app.js?v=20261111b" defer></script>
+<script src="avatar.js?v=20261112a" defer></script>
+<script src="team.js?v=20261112a" defer></script>
+<script src="cities.js?v=20261112a" defer></script>
+<script src="citylayers.js?v=20261112a" defer></script>
+<script src="app.js?v=20261112a" defer></script>
 </head>
 <body>
 <div id="draft-banner" class="banner" hidden>Draft: this notice hasn't been approved yet, so sign-up is off.</div>
@@ -147,6 +147,15 @@
           <p class="muted small" id="talk-note" aria-live="polite"></p>
         </section>
         <section id="work" class="work" aria-label="Your team on this trip"></section>
+        <section id="packing" class="panel packing" hidden aria-label="Packing list">
+          <h3>Packing <span class="muted small">· Tove</span></h3>
+          <p class="muted small">Ideas from Tove, generic items only, not checked against a forecast. Tick what's packed; add your own.</p>
+          <ul id="pack-list" class="pack-list"></ul>
+          <form id="pack-add" class="pack-add" autocomplete="off">
+            <input name="item" maxlength="60" placeholder="Add an item" aria-label="Add an item to the packing list" required>
+            <button type="submit" class="chip">Add</button>
+          </form>
+        </section>
         <section id="plan" class="plan" hidden aria-label="Your plan"></section>
         <details id="brief-wrap" class="panel brief-wrap" open>
         <summary><h3>Trip brief</h3></summary>

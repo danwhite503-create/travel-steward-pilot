@@ -522,3 +522,15 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .msg.proposal{border:2px dashed var(--ink)}
 .badge-prop{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:999px;background:var(--yellow);color:#111}
 .chip.yes{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+/* Tove's packing list (store v0.1.9) */
+.packing h3 { margin: 0 0 .25rem; }
+.pack-list { list-style: none; margin: .5rem 0; padding: 0; }
+.pack-list .pack-cat { font-weight: 600; margin: .75rem 0 .25rem; font-size: .9rem; opacity: .8; }
+.pack-list .pack-item { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; padding: .35rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+.pack-list .pack-item label { display: flex; align-items: center; gap: .6rem; flex: 1 1 60%; min-height: 44px; cursor: pointer; }
+.pack-list .pack-item input[type=checkbox] { width: 1.25rem; height: 1.25rem; flex: none; }
+.pack-list .pack-item.got .grow { text-decoration: line-through; opacity: .6; }
+.pack-list .pack-why { flex-basis: 100%; padding-left: 1.85rem; }
+.pack-add { display: flex; gap: .5rem; }
+.pack-add input { flex: 1; min-width: 0; }

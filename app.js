@@ -544,7 +544,7 @@
     for (const s of ["#share-on", "#share-off", "#trip-delete"]) $(s).disabled = !mine;
     let canWrite = mine;
     if (!mine) { const m = await sb.from("trip_members").select("role").eq("trip_id", current.id).eq("user_id", user.id).maybeSingle(); canWrite = !!(m.data && m.data.role !== "viewer"); }
-    $("#item-new").hidden = !canWrite;
+    $("#item-new").hidden = !canWrite; tripCanWrite = canWrite;
     fillBrief(bp, canWrite); paintDocs(bp);
     $("#talk").hidden = CFG.STEWARD_LIVE !== true;   // shown only once he switches the live steward on (D-557)
     $("#talk-form").hidden = !canWrite; $("#talk-text").disabled = !canWrite; $("#talk-note").textContent = "";
@@ -652,11 +652,17 @@
     }
     note.textContent = ""; $("#talk-text").value = "";
     await loadThread();
+    if (data && data.packing_changed) { await loadItems(); note.textContent = "Tove updated the packing list below."; }
     if (data && (data.brief_changed || data.dates_changed)) {
       await loadTrips(); current = trips.find((t) => t.id === current.id) || current;
       const bp = (briefs[current.id] || {}).payload || {};
       fillBrief(bp, !$("#brief button[type=submit]").disabled); paintDocs(bp); paintTicket();
-      note.textContent = data.dates_changed ? "Arlo set the trip's name and dates. Edit trip changes them." : "Arlo updated the brief below.";
+      // Say only what changed (his phone, 11 Nov: "name and dates" when only the name was set).
+      const tc = data.title_changed, ds = data.dates_set;
+      note.textContent = tc && ds ? "Arlo set the trip's name and dates. Edit trip changes them."
+        : ds ? "Arlo set the trip's dates. Edit trip changes them."
+        : tc ? "Arlo named the trip. Edit trip changes it."
+        : data.dates_changed ? "Arlo updated the trip. Edit trip changes it." : "Arlo updated the brief below.";
     }
   }
   $("#talk-form").addEventListener("submit", (e) => { e.preventDefault(); stopMic(); sendTalk($("#talk-text").value); });
@@ -665,7 +671,8 @@
     const { data, error } = await sb.from("trip_items").select("id, kind, payload, created_by, created_at, updated_at").eq("trip_id", current.id).order("created_at");
     if (error) return flash(explain(error), "bad");
     const ul = $("#item-list"); ul.replaceChildren();
-    const notes = (data || []).filter((i) => i.kind !== "brief" && i.kind !== "plan");
+    const notes = (data || []).filter((i) => i.kind !== "brief" && i.kind !== "plan" && i.kind !== "packing");
+    paintPacking((data || []).filter((i) => i.kind === "packing").pop() || null);
     const planItem = (data || []).filter((i) => i.kind === "plan").pop();
     currentPlan = planItem ? planItem.payload || {} : null;
     currentPlanAt = planItem ? planItem.created_at : null;
@@ -684,6 +691,58 @@
     }
     if (!notes.length) ul.append(el("li", { class: "empty" }, "No notes yet. Anything the brief doesn't cover goes here."));
   }
+  // ---------- Tove's packing list (store v0.1.9) ----------
+  // One list per trip. Tove adds generic items through the steward; the owner and editors tick, add and remove them
+  // here with their own sign-in. Each change re-reads the list first and writes it whole, so a tick isn't lost to an
+  // older copy (two people ticking at the same moment can still overwrite each other: last write wins).
+  let tripCanWrite = false;
+  const PACK_ORDER = ["clothing", "footwear", "toiletries", "tech", "gear", "other"];
+  const PACK_LABEL = { clothing: "Clothing", footwear: "Footwear", toiletries: "Toiletries", tech: "Tech", gear: "Gear", other: "Other" };
+  function paintPacking(item) {
+    const sec = $("#packing"); if (!sec) return;
+    const items = item && item.payload && Array.isArray(item.payload.items) ? item.payload.items : [];
+    sec.hidden = !item && !tripCanWrite;
+    $("#pack-add").hidden = !tripCanWrite;
+    const ul = $("#pack-list"); ul.replaceChildren();
+    if (!items.length) { ul.append(el("li", { class: "empty" }, "Nothing yet. Ask Tove what to pack, or add your own.")); return; }
+    for (const cat of PACK_ORDER) {
+      const rows = items.filter((i) => (PACK_ORDER.includes(i.cat) ? i.cat : "other") === cat);
+      if (!rows.length) continue;
+      ul.append(el("li", { class: "pack-cat" }, PACK_LABEL[cat]));
+      for (const i of rows) {
+        const box = el("input", { type: "checkbox", "aria-label": "Packed: " + i.name });
+        box.checked = !!i.got; box.disabled = !tripCanWrite;
+        box.addEventListener("change", () => changePacking((list) => list.map((x) => (x.id === i.id ? Object.assign({}, x, { got: box.checked }) : x))));
+        const li = el("li", { class: "pack-item" + (i.got ? " got" : "") }, el("label", {}, box, el("span", { class: "grow" }, i.name)));
+        if (i.why) li.append(el("div", { class: "muted small pack-why" }, i.why));
+        if (tripCanWrite) li.append(el("button", { type: "button", class: "link small", "aria-label": "Remove " + i.name,
+          onclick: () => changePacking((list) => list.filter((x) => x.id !== i.id)) }, "Remove"));
+        ul.append(li);
+      }
+    }
+  }
+  async function changePacking(fn) {
+    const r = await sb.from("trip_items").select("id, payload").eq("trip_id", current.id).eq("kind", "packing").maybeSingle();
+    if (r.error) return flash(explain(r.error), "bad");
+    const now = new Date().toISOString();
+    const items = fn(r.data && r.data.payload && Array.isArray(r.data.payload.items) ? r.data.payload.items : []);
+    const payload = { v: 1, items, updated_at: now };
+    const w = r.data ? await sb.from("trip_items").update({ payload }).eq("id", r.data.id)
+      : await sb.from("trip_items").insert({ trip_id: current.id, kind: "packing", payload });
+    if (w.error) flash(explain(w.error), "bad");
+    loadItems();
+  }
+  $("#pack-add").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target, name = f.item.value.replace(/\s+/g, " ").trim().slice(0, 60);
+    if (!name) return;
+    const nk = neverKept(name);
+    if (nk) return flash("Not added: this looks like " + nk + ", which the pilot never keeps.", "bad");
+    const fold = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    f.reset();
+    changePacking((list) => list.some((x) => fold(x.name) === fold(name)) ? list
+      : list.concat([{ id: "u" + Date.now().toString(36), name, cat: "other", why: "", by: "you", got: false }]));
+  });
   $("#item-new").addEventListener("submit", async (e) => {
     e.preventDefault();
     const f = e.target;
