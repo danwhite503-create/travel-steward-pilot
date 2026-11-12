@@ -313,16 +313,24 @@
     if (!detail || !anchor) return;
     tabsOn = true;
     const nav = el("div", { class: "trip-tabs", id: "trip-tabs", role: "tablist", "aria-label": "Trip sections" },
-      ...TAB_KEYS.map((k) => el("button", { type: "button", role: "tab", id: "tab-" + k, "aria-controls": "panel-" + k, "aria-selected": "false",
-        onclick: () => showTab(k) }, TAB_LABEL[k], el("span", { class: "tab-dot", hidden: "" }))));
-    const panels = TAB_KEYS.map((k) => el("div", { class: "tab-panel", id: "panel-" + k, role: "tabpanel", "aria-labelledby": "tab-" + k, hidden: "" }));
+      ...TAB_KEYS.map((k) => el("button", { type: "button", role: "tab", id: "tab-" + k, "aria-controls": "panel-" + k, "aria-selected": "false", tabindex: "-1",
+        onclick: () => showTab(k) }, TAB_LABEL[k], el("span", { class: "tab-dot", hidden: "" }, el("span", { class: "sr-only" }, " (new)")))));
+    // Arrow keys move between tabs, Home and End jump (review L11).
+    nav.addEventListener("keydown", (e) => {
+      const i = TAB_KEYS.findIndex((k) => $("#tab-" + k).classList.contains("on"));
+      const j = e.key === "ArrowRight" ? (i + 1) % TAB_KEYS.length : e.key === "ArrowLeft" ? (i + TAB_KEYS.length - 1) % TAB_KEYS.length : e.key === "Home" ? 0 : e.key === "End" ? TAB_KEYS.length - 1 : -1;
+      if (j < 0) return; e.preventDefault(); showTab(TAB_KEYS[j]); $("#tab-" + TAB_KEYS[j]).focus();
+    });
+    const panels = TAB_KEYS.map((k) => el("div", { class: "tab-panel", id: "panel-" + k, role: "tabpanel", "aria-labelledby": "tab-" + k, tabindex: "0", hidden: "" }));
     const P = Object.fromEntries(TAB_KEYS.map((k, i) => [k, panels[i]]));
     const rail = el("aside", { class: "team-rail", id: "team-rail", "aria-label": "Your team in this chat" });
     for (const key of LIVE_TEAM) {
       const T = window.TravelTeam, m = T && T.TEAM.find((x) => x.key === key); if (!m) continue;
       const face = el("span", { class: "face" }); face.innerHTML = T.svg(key);
       rail.append(el("button", { type: "button", class: "mate", "data-agent": key, title: "Ask " + m.name + " (" + m.role + ")",
-        onclick: () => { showTab("chat"); const t = $("#talk-text"); if (t.disabled) return; if (key !== "steward" && !t.value.startsWith(m.name)) t.value = m.name + ", " + t.value; t.focus(); } },
+        onclick: () => { showTab("chat"); const t = $("#talk-text"); if (t.disabled) return; const names = LIVE_TEAM.map((k) => (T.TEAM.find((x) => x.key === k) || {}).name).filter(Boolean);
+          const rest = t.value.replace(new RegExp("^(" + names.join("|") + "), ?"), "");   // one name at the front, never a pile (review L12)
+          t.value = key === "steward" ? rest : m.name + ", " + rest; t.focus(); } },
         face, el("span", { class: "mate-name" }, m.name), el("span", { class: "mate-role" }, key === "steward" ? "Steward" : m.role)));
     }
     rail.append(el("p", { class: "muted small rail-note" }, "Rail, flights, stays, carbon, booking and the inspector work behind the scenes on the plan."));
@@ -338,7 +346,8 @@
     }
     P.wallet.append(el("section", { class: "panel", id: "wallet-people", "aria-label": "Passports" }),
       el("section", { class: "panel muted small", id: "wallet-later" }, "Bookings and points come here once the next version of the notice is approved: vendor, dates, amount and status, never booking references, ticket or member numbers."));
-    const body = el("div", { class: "trip-body" }, el("div", { class: "trip-main" }, nav, ...panels), rail);
+    // The team comes first in reading order, as it shows on a phone; on a computer CSS moves it to the right (review L11).
+    const body = el("div", { class: "trip-body" }, rail, el("div", { class: "trip-main" }, nav, ...panels));
     at.after(body);
     $("#talk h3").textContent = "Talk to your team";
     $("#talk-intro").textContent = "One chat with the whole team. Arlo leads and brings in whoever a question is for; they fill the Trip, Wallet & passport and Suitcase tabs as you go. Places, prices and times are suggestions until the team checks them.";
@@ -350,7 +359,7 @@
     for (const t of TAB_KEYS) {
       const on = t === k;
       $("#panel-" + t).hidden = !on;
-      const b = $("#tab-" + t); b.setAttribute("aria-selected", on ? "true" : "false"); b.classList.toggle("on", on);
+      const b = $("#tab-" + t); b.setAttribute("aria-selected", on ? "true" : "false"); b.setAttribute("tabindex", on ? "0" : "-1"); b.classList.toggle("on", on);
       if (on) b.querySelector(".tab-dot").hidden = true;
     }
   }
@@ -373,6 +382,7 @@
     const going = new Set(Array.isArray(bp && bp.who) ? bp.who : []);
     const rows = (travelerRows || []).filter((t) => going.has(t.id));
     box.replaceChildren(el("h3", {}, "Passports"));
+    if (current && user && current.owner !== user.id) { box.append(el("p", { class: "muted small" }, "Only the trip's owner sees passport dates; yours are in the Travelers tab.")); return; }   // review L10
     if (!rows.length) { box.append(el("p", { class: "muted small" }, "Tick who's going in the Trip tab's brief, and their passport expiry dates show here.")); return; }
     const ul = el("ul", { class: "list" });
     for (const t of rows) ul.append(el("li", {}, el("span", { class: "who" }, [t.first_name, t.last_name].filter(Boolean).join(" ")),
@@ -647,7 +657,7 @@
     rows.forEach((m, i) => {
       const mine = m.kind === "user";
       if (m.kind === "handoff") { ol.append(el("li", { class: "handoff small" }, m.body)); return; }
-      if (m.kind === "proposal") { ol.append(proposalCard(m, i === rows.length - 1)); return; }
+      if (m.kind === "proposal") { ol.append(proposalCard(m, rows.slice(i + 1).every((r) => r.kind !== "user"), rows)); return; }
       const tm = T && T.TEAM.find((x) => x.key === m.agent);
       const who = mine ? (m.author === user.id ? "You" : "Someone on this trip") : tm ? tm.name + " · " + (m.agent === "steward" ? "Steward" : tm.role) : "The team";
       const li = el("li", { class: "msg " + (mine ? "me" : "agent") + (tm && !mine ? " by-" + m.agent : "") }, el("div", { class: "msg-who" }, who), el("div", { class: "msg-body" }, m.body));
@@ -671,20 +681,54 @@
   }
   // Arlo's proposals (D-558): a card that writes nothing until the owner taps it; then the page writes the record with
   // the owner's own sign-in (row security applies) and tells Arlo in the thread, so the chat carries on.
-  function proposalCard(m, last) {
+  // Cards answered in this page load: message id → what was said. Arlo hears back once every open card from his turn
+  // is answered, in one message, so "me, Ally and Sam" is three taps and one reply (his message 11 Nov 22:15).
+  const cardDone = new Map();
+  const foldName = (v) => String(v || "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  // A person Arlo proposed for this trip: found among the owner's travelers by name, or saved as new; then ticked as
+  // going in the trip's brief (read fresh, so nothing else in it changes). The owner's own sign-in does both.
+  async function addTraveler(p) {
+    const match = (travelerRows || []).find((t) => foldName(t.first_name) === foldName(p.first_name) && (!p.last_name || foldName(t.last_name) === foldName(p.last_name)));
+    let id = match && match.id;
+    if (!id) {
+      id = crypto.randomUUID();
+      const row = { id, first_name: p.first_name }; if (p.last_name) row.last_name = p.last_name; if (p.nationality) row.nationality = p.nationality;
+      const w = await sb.from("travellers").insert(row); if (w.error) return { error: w.error };
+    }
+    if (p.on_trip === false) return { said: "Saved " + p.first_name + " as a traveler." };
+    const cur = await sb.from("trip_items").select("id, payload").eq("trip_id", current.id).eq("kind", "brief").maybeSingle();
+    if (cur.error) return { error: cur.error };
+    const payload = Object.assign({ v: 1 }, (cur.data && cur.data.payload) || {});
+    const who = Array.isArray(payload.who) ? payload.who.slice() : [];
+    if (!who.includes(id)) who.push(id);
+    payload.who = who;
+    const w = cur.data ? await sb.from("trip_items").update({ payload }).eq("id", cur.data.id) : await sb.from("trip_items").insert({ trip_id: current.id, kind: "brief", payload });
+    if (w.error) return { error: w.error };
+    await loadTravellers(); await loadTrips(); current = trips.find((t) => t.id === current.id) || current;
+    const bp = (briefs[current.id] || {}).payload || {}; fillBrief(bp, true); paintDocs(bp); paintWallet(bp); dotTab("wallet");
+    return { said: "Added " + p.first_name + " to the trip" + (match ? "." : " as a new traveler.") };
+  }
+  function proposalCard(m, open, rows) {
     const p = m.payload || {}, mine = current && user && current.owner === user.id;
-    const li = el("li", { class: "msg agent proposal" }, el("div", { class: "msg-who" }, "Arlo · Steward ", el("span", { class: "badge-prop" }, "to save")), el("div", { class: "msg-body" }, m.body));
+    const li = el("li", { class: "msg agent proposal" }, el("div", { class: "msg-who" }, "Arlo · Steward ", el("span", { class: "badge-prop" }, p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save")), el("div", { class: "msg-body" }, m.body));
     if (p.type === "traveler") li.append(el("p", { class: "muted small" }, "Only add people who've agreed to be on the pilot, as the notice asks."));
-    if (!last || !mine || $("#talk-text").disabled) return li;
+    if (cardDone.has(m.id)) { li.classList.add("done"); li.append(el("p", { class: "small card-done" }, cardDone.get(m.id))); return li; }
+    if (!open || !mine || $("#talk-text").disabled) return li;
     const note = $("#talk-note");
-    const yes = el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? "Add" : "Save");
+    const finish = (said) => {
+      cardDone.set(m.id, said);
+      const pending = (rows || []).filter((r, i) => r.kind === "proposal" && rows.slice(i + 1).every((x) => x.kind !== "user") && !cardDone.has(r.id));
+      if (pending.length) { loadThread(); return; }
+      const group = (rows || []).filter((r, i) => r.kind === "proposal" && rows.slice(i + 1).every((x) => x.kind !== "user")).map((r) => cardDone.get(r.id)).filter(Boolean);
+      sendTalk(group.join(" "));
+    };
+    const yes = el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? (p.on_trip === false ? "Save" : "Add to trip") : "Save");
     const no = el("button", { type: "button", class: "chip" }, "Not now");
     yes.addEventListener("click", async () => {
       yes.disabled = no.disabled = true;
       let error = null, said = "";
       if (p.type === "traveler") {
-        const row = { first_name: p.first_name }; if (p.last_name) row.last_name = p.last_name; if (p.nationality) row.nationality = p.nationality;
-        ({ error } = await sb.from("travellers").insert(row)); said = "Added " + p.first_name + " as a traveler.";
+        ({ error, said } = await addTraveler(p));
       } else if (p.type === "pref") {
         const cur = await sb.from("prefs").select("items").eq("section", p.section).maybeSingle();
         const items = ((cur.data && cur.data.items) || []).concat([{ label: p.line }]);
@@ -697,9 +741,9 @@
         said = "Saved " + p.city + " as my home city.";
       }
       if (error) { yes.disabled = no.disabled = false; note.textContent = explain(error); return; }
-      await sendTalk(said);
+      finish(said);
     });
-    no.addEventListener("click", () => { yes.disabled = no.disabled = true; sendTalk("Not now."); });
+    no.addEventListener("click", () => { yes.disabled = no.disabled = true; finish(p.type === "traveler" ? "Not " + p.first_name + " for now." : "Not now."); });
     li.append(el("div", { class: "chips" }, yes, no));
     return li;
   }
@@ -737,17 +781,19 @@
     }
     note.textContent = ""; $("#talk-text").value = "";
     await loadThread();
-    if (data && data.packing_changed) { await loadItems(); note.textContent = tabsOn ? "Tove updated your Suitcase." : "Tove updated the packing list below."; dotTab("suitcase"); }
+    const said = [];
+    if (data && data.packing_changed) { await loadItems(); said.push(tabsOn ? "Tove updated your Suitcase." : "Tove updated the packing list below."); dotTab("suitcase"); note.textContent = said.join(" "); }
     if (data && (data.brief_changed || data.dates_changed)) {
       await loadTrips(); current = trips.find((t) => t.id === current.id) || current;
       const bp = (briefs[current.id] || {}).payload || {};
       fillBrief(bp, !$("#brief button[type=submit]").disabled); paintDocs(bp); paintWallet(bp); paintTicket(); dotTab("trip");
       // Say only what changed (his phone, 11 Nov: "name and dates" when only the name was set).
       const tc = data.title_changed, ds = data.dates_set;
-      note.textContent = tc && ds ? "Arlo set the trip's name and dates. Edit trip changes them."
+      said.push(tc && ds ? "Arlo set the trip's name and dates. Edit trip changes them."
         : ds ? "Arlo set the trip's dates. Edit trip changes them."
         : tc ? "Arlo named the trip. Edit trip changes it."
-        : data.dates_changed ? "Arlo updated the trip. Edit trip changes it." : "Arlo updated the brief below.";
+        : data.dates_changed ? "Arlo updated the trip. Edit trip changes it." : tabsOn ? "Arlo updated the brief in the Trip tab." : "Arlo updated the brief below.");
+      note.textContent = said.join(" ");   // both notes when Tove and Arlo changed things in one turn (review L9)
     }
   }
   $("#talk-form").addEventListener("submit", (e) => { e.preventDefault(); stopMic(); sendTalk($("#talk-text").value); });
@@ -806,16 +852,33 @@
       }
     }
   }
-  async function changePacking(fn) {
-    const r = await sb.from("trip_items").select("id, payload").eq("trip_id", current.id).eq("kind", "packing").maybeSingle();
-    if (r.error) return flash(explain(r.error), "bad");
-    const now = new Date().toISOString();
-    const items = fn(r.data && r.data.payload && Array.isArray(r.data.payload.items) ? r.data.payload.items : []);
-    const payload = { v: 1, items, updated_at: now };
-    const w = r.data ? await sb.from("trip_items").update({ payload }).eq("id", r.data.id)
-      : await sb.from("trip_items").insert({ trip_id: current.id, kind: "packing", payload });
-    if (w.error) flash(explain(w.error), "bad");
-    loadItems();
+  // Changes go one at a time (review M2: two quick ticks read the same list and the second undid the first), and each
+  // lands only if the list hasn't changed since it was read; otherwise it's read again and re-applied, up to 3 times.
+  let packQueue = Promise.resolve();
+  function changePacking(fn) {
+    const job = packQueue.then(() => applyPacking(fn));
+    packQueue = job.catch(() => false);
+    return job;
+  }
+  async function applyPacking(fn) {
+    const trip = current; let ok = false, err = null;
+    for (let attempt = 0; attempt < 3 && !ok; attempt++) {
+      const r = await sb.from("trip_items").select("id, payload, updated_at").eq("trip_id", trip.id).eq("kind", "packing").maybeSingle();
+      if (r.error) { err = r.error; break; }
+      const items = fn(r.data && r.data.payload && Array.isArray(r.data.payload.items) ? r.data.payload.items : []);
+      const payload = { v: 1, items, updated_at: new Date().toISOString() };
+      if (!r.data) {
+        const w = await sb.from("trip_items").insert({ trip_id: trip.id, kind: "packing", payload });
+        if (!w.error) ok = true; else if (w.error.code !== "23505") { err = w.error; break; }   // made meanwhile: read it again
+      } else {
+        const w = await sb.from("trip_items").update({ payload }).eq("id", r.data.id).eq("updated_at", r.data.updated_at).select("id");
+        if (w.error) { err = w.error; break; }
+        ok = (w.data || []).length > 0;
+      }
+    }
+    if (!ok) flash(err ? explain(err) : "The list changed while saving. Try again.", "bad");
+    if (current === trip) loadItems();
+    return ok;
   }
   $("#pack-add").addEventListener("submit", (e) => {
     e.preventDefault();
@@ -823,10 +886,10 @@
     if (!name) return;
     const nk = neverKept(name);
     if (nk) return flash("Not added: this looks like " + nk + ", which the pilot never keeps.", "bad");
-    const fold = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-    f.reset();
-    changePacking((list) => list.some((x) => fold(x.name) === fold(name)) ? list
-      : list.concat([{ id: "u" + Date.now().toString(36), name, cat: "other", why: "", by: "you", got: false }]));
+    const fold = (v) => String(v || "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    changePacking((list) => (fold(name) && list.some((x) => fold(x.name) === fold(name))) || list.length >= 60 ? list
+      : list.concat([{ id: "u" + Date.now().toString(36), name, cat: "other", why: "", by: "you", got: false }]))
+      .then((ok) => { if (ok) f.reset(); });   // the text stays if the save fails (review L6)
   });
   $("#item-new").addEventListener("submit", async (e) => {
     e.preventDefault();

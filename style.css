@@ -537,7 +537,7 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .pack-add input { flex: 1; min-width: 0; }
 
 /* The team in one chat, and the trip's tabs (11 Nov 21:08) */
-.trip-body{display:flex;flex-direction:column-reverse;gap:12px;margin-top:12px}
+.trip-body{display:flex;flex-direction:column;gap:12px;margin-top:12px}
 .trip-main{min-width:0}
 .trip-tabs{display:flex;gap:2px;border-bottom:2px solid var(--ink);overflow-x:auto;scrollbar-width:none;position:sticky;top:0;background:var(--bg);z-index:2}
 .trip-tabs::-webkit-scrollbar{display:none}
@@ -560,13 +560,14 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 @keyframes mate-pulse{50%{transform:scale(.92)}}
 .team-rail .rail-note{display:none}
 .msg.agent{position:relative}
-.msg .msg-face{position:absolute;left:-6px;top:-10px;width:28px;height:28px;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px var(--surface)}
+.msg .msg-face{position:absolute;left:6px;top:6px;width:28px;height:28px;border-radius:50%;overflow:hidden;box-shadow:0 0 0 2px var(--surface)}
 .msg .msg-face svg{width:100%;height:100%;display:block}
-.msg.agent .msg-who{padding-left:20px}
+.msg.agent .msg-who{padding-left:28px;min-height:24px}
+.trip-tabs .tab-dot .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 @media (min-width:900px){
   .trip-body{flex-direction:row;align-items:flex-start;gap:24px}
   .trip-main{flex:1}
-  .team-rail{flex:0 0 170px;flex-direction:column;align-items:stretch;overflow:visible;position:sticky;top:12px;padding-top:56px}
+  .team-rail{order:2;flex:0 0 170px;flex-direction:column;align-items:stretch;overflow:visible;position:sticky;top:12px;padding-top:56px}
   .team-rail .mate{flex-direction:row;gap:10px;text-align:left;justify-content:flex-start;min-width:0}
   .team-rail .mate > span:not(.face){display:block}
   .team-rail .mate .mate-role{display:block}
