@@ -48,6 +48,9 @@
   const countryName = (() => { try { const d = new Intl.DisplayNames(["en"], { type: "region" }); return (c) => d.of(c) || c; } catch (e) { return (c) => c; } })();
   // The brief of each trip, by trip id: { id, payload }. Kept as a trip item of kind "brief".
   let briefs = {};
+  // Arlo's cards answered in this page load: id → what was said. Declared here, before anything can render the thread.
+  const cardDone = new Map();
+  const openCards = new Set(), cardRows = new Map(), tapped = new Map();   // open now; id → card; tapped, not yet told
   let plans = {};
   // What a plan amounts to (D-550): a refusal, or options that all break a hard rule, is never "ready" (D-544(1)).
   function planState(p) {
@@ -654,10 +657,12 @@
     const rows = data || [];
     if (!rows.length) ol.append(el("li", { class: "empty" }, "Say hello, or tell Arlo where you'd like to go."));
     const T = window.TravelTeam;
+    const wasOpen = new Set(openCards); openCards.clear();
     rows.forEach((m, i) => {
       const mine = m.kind === "user";
       if (m.kind === "handoff") { ol.append(el("li", { class: "handoff small" }, m.body)); return; }
-      if (m.kind === "proposal") { ol.append(proposalCard(m, rows.slice(i + 1).every((r) => r.kind !== "user"), rows)); return; }
+      // A card stays open after he types, until it's answered by a tap or by what he typed (his message 12 Nov 23:25).
+      if (m.kind === "proposal") { ol.append(proposalCard(m, wasOpen.has(m.id) || rows.slice(i + 1).every((r) => r.kind !== "user"))); return; }
       const tm = T && T.TEAM.find((x) => x.key === m.agent);
       const who = mine ? (m.author === user.id ? "You" : "Someone on this trip") : tm ? tm.name + " · " + (m.agent === "steward" ? "Steward" : tm.role) : "The team";
       const li = el("li", { class: "msg " + (mine ? "me" : "agent") + (tm && !mine ? " by-" + m.agent : "") }, el("div", { class: "msg-who" }, who), el("div", { class: "msg-body" }, m.body));
@@ -681,9 +686,6 @@
   }
   // Arlo's proposals (D-558): a card that writes nothing until the owner taps it; then the page writes the record with
   // the owner's own sign-in (row security applies) and tells Arlo in the thread, so the chat carries on.
-  // Cards answered in this page load: message id → what was said. Arlo hears back once every open card from his turn
-  // is answered, in one message, so "me, Ally and Sam" is three taps and one reply (his message 11 Nov 22:15).
-  const cardDone = new Map();
   const foldName = (v) => String(v || "").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   // A person Arlo proposed for this trip: found among the owner's travelers by name, or saved as new; then ticked as
   // going in the trip's brief (read fresh, so nothing else in it changes). The owner's own sign-in does both.
@@ -708,42 +710,59 @@
     const bp = (briefs[current.id] || {}).payload || {}; fillBrief(bp, true); paintDocs(bp); paintWallet(bp); dotTab("wallet");
     return { said: "Added " + p.first_name + " to the trip" + (match ? "." : " as a new traveler.") };
   }
-  function proposalCard(m, open, rows) {
+  // What a yes does, the same for a tap and for a typed answer: written with the owner's own sign-in.
+  async function doCard(p) {
+    if (p.type === "traveler") return addTraveler(p);
+    if (p.type === "pref") {
+      const cur = await sb.from("prefs").select("items").eq("section", p.section).maybeSingle();
+      const items = ((cur.data && cur.data.items) || []).concat([{ label: p.line }]);
+      const { error } = await sb.from("prefs").upsert({ user_id: user.id, section: p.section, items, updated_at: new Date().toISOString() }, { onConflict: "user_id,section" });
+      return { error, said: "Saved to my preferences: " + p.line };
+    }
+    if (p.type === "home") {
+      const cur = await sb.from("profiles").select("display_name").maybeSingle();
+      const name = (cur.data && cur.data.display_name) || (user.email || "Me").split("@")[0];
+      const { error } = await sb.from("profiles").upsert({ user_id: user.id, display_name: name, home_city: p.city, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+      return { error, said: "Saved " + p.city + " as my home city." };
+    }
+    return { error: { message: "unknown card" }, said: "" };
+  }
+  const noSaid = (p) => p.type === "traveler" ? "Not " + p.first_name + " for now." : "Not now.";
+  // Arlo said which open cards his typed message answered: do what the taps would have, and tell Arlo nothing more.
+  async function applyAnswers(answered) {
+    const note = $("#talk-note");
+    for (const a of answered || []) {
+      const m = cardRows.get(a.id); if (!m || cardDone.has(a.id)) continue;
+      if (a.answer === "no") { cardDone.set(a.id, noSaid(m.payload || {})); continue; }
+      const r = await doCard(m.payload || {});
+      if (r.error) { note.textContent = explain(r.error); continue; }
+      cardDone.set(a.id, r.said);
+    }
+  }
+  function proposalCard(m, open) {
     const p = m.payload || {}, mine = current && user && current.owner === user.id;
     const li = el("li", { class: "msg agent proposal" }, el("div", { class: "msg-who" }, "Arlo · Steward ", el("span", { class: "badge-prop" }, p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save")), el("div", { class: "msg-body" }, m.body));
     if (p.type === "traveler") li.append(el("p", { class: "muted small" }, "Only add people who've agreed to be on the pilot, as the notice asks."));
     if (cardDone.has(m.id)) { li.classList.add("done"); li.append(el("p", { class: "small card-done" }, cardDone.get(m.id))); return li; }
     if (!open || !mine || $("#talk-text").disabled) return li;
+    openCards.add(m.id); cardRows.set(m.id, m);
     const note = $("#talk-note");
+    // Arlo hears back once every open card is answered, in one message, so "me, Ally and Sam" is three taps and one reply.
     const finish = (said) => {
-      cardDone.set(m.id, said);
-      const pending = (rows || []).filter((r, i) => r.kind === "proposal" && rows.slice(i + 1).every((x) => x.kind !== "user") && !cardDone.has(r.id));
-      if (pending.length) { loadThread(); return; }
-      const group = (rows || []).filter((r, i) => r.kind === "proposal" && rows.slice(i + 1).every((x) => x.kind !== "user")).map((r) => cardDone.get(r.id)).filter(Boolean);
+      cardDone.set(m.id, said); tapped.set(m.id, said);
+      if ([...openCards].some((id) => !cardDone.has(id))) { loadThread(); return; }
+      const group = [...cardRows.keys()].filter((id) => tapped.has(id)).map((id) => tapped.get(id)); tapped.clear();   // in card order
       sendTalk(group.join(" "));
     };
     const yes = el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? (p.on_trip === false ? "Save" : "Add to trip") : "Save");
     const no = el("button", { type: "button", class: "chip" }, "Not now");
     yes.addEventListener("click", async () => {
       yes.disabled = no.disabled = true;
-      let error = null, said = "";
-      if (p.type === "traveler") {
-        ({ error, said } = await addTraveler(p));
-      } else if (p.type === "pref") {
-        const cur = await sb.from("prefs").select("items").eq("section", p.section).maybeSingle();
-        const items = ((cur.data && cur.data.items) || []).concat([{ label: p.line }]);
-        ({ error } = await sb.from("prefs").upsert({ user_id: user.id, section: p.section, items, updated_at: new Date().toISOString() }, { onConflict: "user_id,section" }));
-        said = "Saved to my preferences: " + p.line;
-      } else if (p.type === "home") {
-        const cur = await sb.from("profiles").select("display_name").maybeSingle();
-        const name = (cur.data && cur.data.display_name) || (user.email || "Me").split("@")[0];
-        ({ error } = await sb.from("profiles").upsert({ user_id: user.id, display_name: name, home_city: p.city, updated_at: new Date().toISOString() }, { onConflict: "user_id" }));
-        said = "Saved " + p.city + " as my home city.";
-      }
+      const { error, said } = await doCard(p);
       if (error) { yes.disabled = no.disabled = false; note.textContent = explain(error); return; }
       finish(said);
     });
-    no.addEventListener("click", () => { yes.disabled = no.disabled = true; finish(p.type === "traveler" ? "Not " + p.first_name + " for now." : "Not now."); });
+    no.addEventListener("click", () => { yes.disabled = no.disabled = true; finish(noSaid(p)); });
     li.append(el("div", { class: "chips" }, yes, no));
     return li;
   }
@@ -765,7 +784,8 @@
     const nk = neverKept(text);
     if (nk) { note.textContent = "Not sent: this looks like " + nk + ", which the pilot never keeps. Reword it and try again."; return; }
     talking = true; $("#talk-form button").disabled = true; note.textContent = tabsOn ? "The team is thinking…" : "Arlo is thinking…"; paintRail(lastThread, true);
-    const { data, error } = await sb.functions.invoke("steward-chat", { body: { trip_id: current.id, text } });
+    const open_cards = [...openCards].filter((id) => !cardDone.has(id));
+    const { data, error } = await sb.functions.invoke("steward-chat", { body: { trip_id: current.id, text, open_cards } });
     talking = false; $("#talk-form button").disabled = false; paintRail(lastThread, false);
     if (error) {
       const st = error.context && error.context.status;
@@ -780,6 +800,7 @@
       return;
     }
     note.textContent = ""; $("#talk-text").value = "";
+    if (data && Array.isArray(data.answered) && data.answered.length) await applyAnswers(data.answered);
     await loadThread();
     const said = [];
     if (data && data.packing_changed) { await loadItems(); said.push(tabsOn ? "Tove updated your Suitcase." : "Tove updated the packing list below."); dotTab("suitcase"); note.textContent = said.join(" "); }
