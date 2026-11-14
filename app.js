@@ -306,7 +306,7 @@
   // With the live steward on, a trip opens on tabs: Chat · Trip · Wallet & passport · Suitcase. The chat stays one
   // thread; the team sits beside it (a strip on a phone, a column on a computer) and whoever spoke last comes forward.
   // The other parts of the trip page are moved into the tabs, not rebuilt, so every existing control keeps working.
-  const LIVE_TEAM = ["steward", "dining", "events", "around", "suitcase"];
+  const LIVE_TEAM = ["steward", "stay", "rail", "air", "dining", "events", "around", "suitcase"];   // his message 14 Nov 11:21
   const TAB_KEYS = ["chat", "trip", "wallet", "suitcase"];
   const TAB_LABEL = { chat: "Chat", trip: "Trip", wallet: "Wallet & passport", suitcase: "Suitcase" };
   let tabsOn = false;
@@ -336,7 +336,7 @@
           t.value = key === "steward" ? rest : m.name + ", " + rest; t.focus(); } },
         face, el("span", { class: "mate-name" }, m.name), el("span", { class: "mate-role" }, key === "steward" ? "Steward" : m.role)));
     }
-    rail.append(el("p", { class: "muted small rail-note" }, "Rail, flights, stays, carbon, booking and the inspector work behind the scenes on the plan."));
+    rail.append(el("p", { class: "muted small rail-note" }, "Carbon, booking and the inspector work behind the scenes on the plan."));
     // Everything after the edit form moves: the chat to Chat, the suitcase to Suitcase, documents to Wallet, the rest to Trip.
     const moving = []; for (let n = anchor.nextElementSibling; n; n = n.nextElementSibling) moving.push(n);
     // The two warnings (plan out of date, missing passport dates) stay above the tabs, so no tab hides them.
@@ -711,8 +711,15 @@
     return { said: "Added " + p.first_name + " to the trip" + (match ? "." : " as a new traveler.") };
   }
   // What a yes does, the same for a tap and for a typed answer: written with the owner's own sign-in.
-  async function doCard(p) {
+  async function doCard(p, opt) {
     if (p.type === "traveler") return addTraveler(p);
+    if (p.type === "choice") {   // a direction for the trip, saved as a decision item; it books nothing
+      const o = (p.options || [])[opt - 1]; if (!o) return { error: { message: "pick one of the options" }, said: "" };
+      const payload = { v: 1, topic: p.topic, chosen: o.label, tradeoff: o.tradeoff, options: p.options.map((x) => x.label), by: p.by, decided_at: new Date().toISOString() };
+      const { error } = await sb.from("trip_items").insert({ trip_id: current.id, kind: "decision", payload });
+      if (!error) { await loadItems(); dotTab("trip"); }
+      return { error, said: p.topic + ": " + o.label + "." };
+    }
     if (p.type === "pref") {
       const cur = await sb.from("prefs").select("items").eq("section", p.section).maybeSingle();
       const items = ((cur.data && cur.data.items) || []).concat([{ label: p.line }]);
@@ -727,21 +734,26 @@
     }
     return { error: { message: "unknown card" }, said: "" };
   }
-  const noSaid = (p) => p.type === "traveler" ? "Not " + p.first_name + " for now." : "Not now.";
+  const noSaid = (p) => p.type === "traveler" ? "Not " + p.first_name + " for now." : p.type === "choice" ? p.topic + ": not decided yet." : "Not now.";
   // Arlo said which open cards his typed message answered: do what the taps would have, and tell Arlo nothing more.
   async function applyAnswers(answered) {
     const note = $("#talk-note");
     for (const a of answered || []) {
       const m = cardRows.get(a.id); if (!m || cardDone.has(a.id)) continue;
       if (a.answer === "no") { cardDone.set(a.id, noSaid(m.payload || {})); continue; }
-      const r = await doCard(m.payload || {});
+      const r = await doCard(m.payload || {}, a.option);
       if (r.error) { note.textContent = explain(r.error); continue; }
       cardDone.set(a.id, r.said);
     }
   }
   function proposalCard(m, open) {
     const p = m.payload || {}, mine = current && user && current.owner === user.id;
-    const li = el("li", { class: "msg agent proposal" }, el("div", { class: "msg-who" }, "Arlo · Steward ", el("span", { class: "badge-prop" }, p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save")), el("div", { class: "msg-body" }, m.body));
+    const T = window.TravelTeam, tm = T && T.TEAM.find((x) => x.key === (m.agent || "steward"));
+    const who = tm ? tm.name + " · " + (tm.key === "steward" ? "Steward" : tm.role) : "Arlo · Steward";
+    const badge = p.type === "choice" ? "to decide" : p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save";
+    const li = el("li", { class: "msg agent proposal" + (p.type === "choice" ? " choice" : "") }, el("div", { class: "msg-who" }, who + " ", el("span", { class: "badge-prop" }, badge)), el("div", { class: "msg-body" }, m.body));
+    if (p.type === "choice") li.append(el("ol", { class: "choice-opts" }, ...(p.options || []).map((o) => el("li", {}, el("strong", {}, o.label), " ", el("span", { class: "muted" }, o.tradeoff)))),
+      el("p", { class: "muted small" }, "General, not yet checked. Choosing sets the direction; nothing is booked."));
     if (p.type === "traveler") li.append(el("p", { class: "muted small" }, "Only add people who've agreed to be on the pilot, as the notice asks."));
     if (cardDone.has(m.id)) { li.classList.add("done"); li.append(el("p", { class: "small card-done" }, cardDone.get(m.id))); return li; }
     if (!open || !mine || $("#talk-text").disabled) return li;
@@ -754,16 +766,18 @@
       const group = [...cardRows.keys()].filter((id) => tapped.has(id)).map((id) => tapped.get(id)); tapped.clear();   // in card order
       sendTalk(group.join(" "));
     };
-    const yes = el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? (p.on_trip === false ? "Save" : "Add to trip") : "Save");
     const no = el("button", { type: "button", class: "chip" }, "Not now");
-    yes.addEventListener("click", async () => {
-      yes.disabled = no.disabled = true;
-      const { error, said } = await doCard(p);
-      if (error) { yes.disabled = no.disabled = false; note.textContent = explain(error); return; }
+    const picks = p.type === "choice" ? (p.options || []).map((o, i) => el("button", { type: "button", class: "chip yes", "data-opt": String(i + 1) }, o.label))
+      : [el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? (p.on_trip === false ? "Save" : "Add to trip") : "Save")];
+    const all = [...picks, no], lock = (v) => all.forEach((b) => { b.disabled = v; });
+    picks.forEach((b, i) => b.addEventListener("click", async () => {
+      lock(true);
+      const { error, said } = await doCard(p, i + 1);
+      if (error) { lock(false); note.textContent = explain(error); return; }
       finish(said);
-    });
-    no.addEventListener("click", () => { yes.disabled = no.disabled = true; finish(noSaid(p)); });
-    li.append(el("div", { class: "chips" }, yes, no));
+    }));
+    no.addEventListener("click", () => { lock(true); finish(noSaid(p)); });
+    li.append(el("div", { class: "chips" }, ...all));
     return li;
   }
   // The never-kept check, on the page too (overnight runs, 10 Nov): a message carrying such a value never leaves the
@@ -824,6 +838,8 @@
     if (error) return flash(explain(error), "bad");
     const ul = $("#item-list"); ul.replaceChildren();
     const notes = (data || []).filter((i) => i.kind !== "brief" && i.kind !== "plan" && i.kind !== "packing");
+    // A decision reads as its topic and what was chosen, and who asked; a later one on the same topic replaces it.
+    const lastDec = new Map(); for (const i of notes) if (i.kind === "decision" && i.payload && i.payload.topic) lastDec.set(i.payload.topic, i.id);
     paintPacking((data || []).filter((i) => i.kind === "packing").pop() || null);
     const planItem = (data || []).filter((i) => i.kind === "plan").pop();
     currentPlan = planItem ? planItem.payload || {} : null;
@@ -832,7 +848,10 @@
     // With a plan on the trip, the brief folds under its heading; without one, it stays open.
     $("#brief-wrap").open = !planItem;
     for (const i of notes) {
-      const text = (i.payload && (i.payload.text || i.payload.t)) || JSON.stringify(i.payload);
+      if (i.kind === "decision" && i.payload && i.payload.topic && lastDec.get(i.payload.topic) !== i.id) continue;
+      const tmd = i.kind === "decision" && window.TravelTeam && window.TravelTeam.TEAM.find((x) => x.key === i.payload.by);
+      const text = i.kind === "decision" && i.payload && i.payload.topic ? i.payload.topic + ": " + i.payload.chosen + (tmd ? " (asked by " + tmd.name + ")" : "")
+        : (i.payload && (i.payload.text || i.payload.t)) || JSON.stringify(i.payload);
       const li = el("li", {}, el("span", { class: "tag" }, i.kind), el("span", { class: "grow" }, text));
       if (i.created_by === user.id || current.owner === user.id) li.append(" ", el("button", { type: "button", class: "link", onclick: async () => {
         if (!(await confirmBox("Delete this item?"))) return;

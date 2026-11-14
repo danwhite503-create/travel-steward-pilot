@@ -576,3 +576,7 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
   .team-rail .rail-note{display:block;margin-top:8px}
 }
 @media (prefers-reduced-motion:reduce){.team-rail .mate,.team-rail .mate .face{transition:none}.team-rail .mate.thinking .face{animation:none}}
+
+/* Choice cards (his message 14 Nov 11:21): a direction to settle, options with their tradeoffs */
+.msg.proposal.choice .choice-opts{margin:6px 0 4px;padding-left:20px}
+.msg.proposal.choice .choice-opts li{margin:4px 0;line-height:1.35}
