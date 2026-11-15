@@ -408,6 +408,7 @@
     box.replaceChildren(el("h3", {}, "Bookings"));
     if (error) { box.append(el("p", { class: "muted small" }, missingTable(error) ? "Bookings come here once the next version of the notice is approved: vendor, dates, amount and status, never booking references or ticket numbers." : explain(error))); return; }
     const rows = data || [];
+    markBookedLegs(new Set(rows.filter((b) => b.status !== "cancelled").map((b) => String(b.title || "").trim().toLowerCase())));
     const ul = el("ul", { class: "list bookings" });
     for (const b of rows) {
       const when = [b.date_from && fmtDate(b.date_from), b.date_to && b.date_to !== b.date_from && fmtDate(b.date_to)].filter(Boolean).join(" – ");
@@ -448,6 +449,31 @@
       flash("Booking added.", "ok"); paintBookings();
     });
     box.append(f);
+  }
+  // From a plan leg to the booking form (steps 4-5): the leg's kind, seller, title and date, nothing typed for him.
+  const LEG_KIND = { rail: "rail", air: "air", stay: "stay", events: "event", dining: "dining" };
+  function legDate(g) {
+    const d0 = current && current.date_from ? new Date(current.date_from + "T12:00:00Z") : null, day = Number(g && g.day);
+    if (!d0 || !Number.isInteger(day) || day < 1 || day > 60) return "";
+    d0.setUTCDate(d0.getUTCDate() + day - 1); return d0.toISOString().slice(0, 10);
+  }
+  async function prefillBooking(g) {
+    showTab("wallet"); await paintBookings();
+    const f = document.querySelector("#wallet-bookings form.book-add"); if (!f) return;
+    let host = ""; try { host = new URL(g.book.url).hostname.replace(/^www\./, ""); } catch (_) { /* leave blank */ }
+    const set = (n, v) => { const x = f.elements.namedItem(n); if (x && v) x.value = v; };
+    set("kind", LEG_KIND[g.by] || "other"); set("vendor", host.slice(0, 80)); set("title", String(g.title || "").slice(0, 120)); set("date_from", legDate(g));
+    flash("Filled from the plan. Check it against the seller's confirmation, add the amount, then Add booking.", "ok");
+    const amt = f.elements.namedItem("amount"); if (amt) amt.focus();
+    f.scrollIntoView({ block: "start" });
+  }
+  // A leg shows Booked once a booking on the trip carries its title (added from the leg, or typed the same).
+  function markBookedLegs(titles) {
+    for (const li of document.querySelectorAll("li[data-leg-title]")) {
+      const done = titles.has(li.dataset.legTitle.trim().toLowerCase());
+      const m = li.querySelector(".booked-mark"), b = li.querySelector(".booked-btn");
+      if (m) m.hidden = !done; if (b) b.hidden = done;
+    }
   }
   async function paintPoints() {
     const box = $("#wallet-points"); if (!box) return;
@@ -959,7 +985,7 @@
     const planItem = (data || []).filter((i) => i.kind === "plan").pop();
     currentPlan = planItem ? planItem.payload || {} : null;
     currentPlanAt = planItem ? planItem.created_at : null;
-    renderPlan(currentPlan); paintWork(); paintStale();
+    renderPlan(currentPlan); paintWork(); paintStale(); if (currentPlan) paintBookings();
     // With a plan on the trip, the brief folds under its heading; without one, it stays open.
     $("#brief-wrap").open = !planItem;
     for (const i of notes) {
@@ -1265,11 +1291,15 @@
       for (const g of legs) {
         const key = SPECIALIST[g.by] || "steward";
         const T = window.TravelTeam, who = T ? (T.TEAM.find((x) => x.key === key) || {}).name : "";
-        const li = el("li", {}, face(key, "leg-face"), el("div", { class: "leg-body" },
+        const li = el("li", { "data-leg-title": String(g.title || "").slice(0, 120) }, face(key, "leg-face"), el("div", { class: "leg-body" },
           el("div", { class: "leg-top" }, g.day ? el("span", { class: "day" }, "Day " + g.day) : "", el("span", { class: "leg-title" }, String(g.title || "")), g.price ? el("span", { class: "price" }, String(g.price)) : ""),
           ...legBody(g),
           el("div", { class: "leg-foot" }, who ? el("span", { class: "muted small" }, "From " + who) : "",
-            g.book && g.book.url ? extLink(g.book.url, String(g.book.label || "Book on the seller's site"), "book") : ""),
+            g.book && g.book.url ? extLink(g.book.url, String(g.book.label || "Book on the seller's site"), "book") : "",
+            // Steps 4-5 of the chat model in the pilot (his “to booking”, 15 Nov 13:01 ET): he books on the seller's page, then
+            // says so here; the Wallet's booking form opens filled from the leg, for him to check against the seller's email.
+            g.book && /^https:\/\//.test(String(g.book.url)) && tripCanWrite ? el("button", { type: "button", class: "link booked-btn", onclick: () => prefillBooking(g) }, "I've booked this") : "",
+            el("span", { class: "booked-mark", hidden: "" }, "Booked")),
           legHow(g)));
         ul.append(li);
       }

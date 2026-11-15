@@ -248,6 +248,8 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .leg-foot{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .plan .leg-foot a.book{display:inline-block;background:var(--ink);color:var(--bg);text-decoration:none;font-weight:500;padding:6px 12px;border-radius:3px;font-size:var(--step--1)}
 .leg-foot .source{font-size:var(--step--1);color:var(--muted)}
+.leg-foot .booked-mark{font-size:var(--step--1);font-weight:600;color:var(--ok, #2f7d32)}
+.leg-foot .booked-mark::before{content:"\2713 "}
 .inspector-note{display:flex;gap:10px;align-items:center;margin-top:12px;font-size:var(--step--1)}
 .plan-chip{display:inline-block;margin-top:8px;font:600 .95rem/1 var(--board);padding:4px 10px;border:1px solid var(--ink);border-radius:3px}
 .plan-chip.checked{background:var(--ink);color:var(--bg)}
