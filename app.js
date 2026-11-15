@@ -536,7 +536,10 @@
   // nothing is sent until the traveler taps Send, so the never-kept check and the review of the words still apply.
   // Shown only where the browser has speech recognition; elsewhere a hint points to the phone keyboard's mic.
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, recBtn = null;
+  // iPhone and iPad (his phone test, 14 Nov 22:34 ET): Safari's speech service cut off at pauses, then showed the mic on
+  // while hearing nothing. There the mic button sends him to the keyboard's own mic (Apple's dictation), which is reliable.
+  const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  let rec = null, recBtn = null, recTimer = null;
   function stopMic() { if (rec) { try { rec.stop(); } catch (_) {} } }
   const noteFor = (btn) => document.getElementById(btn.dataset.for === "start-text" ? "start-note" : "talk-note");
   function micNote(btn, text) { const n = noteFor(btn); if (n) n.textContent = text; }
@@ -544,16 +547,25 @@
     if (CFG.STEWARD_LIVE !== true) continue;
     if (!SR) { const h = $("#start-mic-hint"); if (h && btn.dataset.for === "start-text") h.textContent = "Tip: on a phone, tap the mic on your keyboard to speak."; continue; }
     btn.hidden = false;
+    if (IOS) {
+      const h = $("#start-mic-hint"); if (h && btn.dataset.for === "start-text") h.textContent = "Tip: tap the mic on your keyboard to speak.";
+      btn.addEventListener("click", () => { const box = document.getElementById(btn.dataset.for); if (box) box.focus();
+        micNote(btn, "On iPhone, tap the mic on your keyboard to speak; it hears you better than the browser does."); });
+      continue;
+    }
     if (btn.dataset.for === "start-text") { const h = $("#start-mic-hint"); if (h) h.textContent = "Tap to speak instead of typing"; }
     btn.addEventListener("click", () => {
       if (rec && recBtn === btn) { stopMic(); return; }
       stopMic();
       const box = document.getElementById(btn.dataset.for); const before = box.value ? box.value.trim() + " " : "";
-      rec = new SR(); recBtn = btn; rec.lang = navigator.language || "en-US"; rec.interimResults = true; rec.continuous = false;
-      rec.onresult = (ev) => { let t = ""; for (const r of ev.results) t += r[0].transcript; box.value = (before + t).slice(0, Number(box.maxLength) > 0 ? box.maxLength : 1000); };
+      rec = new SR(); recBtn = btn; rec.lang = navigator.language || "en-US"; rec.interimResults = true; rec.continuous = true;
+      // Keeps listening through pauses until he taps stop; if nothing is heard in 8 seconds, it stops and says so.
+      const quiet = () => { clearTimeout(recTimer); recTimer = setTimeout(() => { micNote(btn, "Didn't hear anything. Check the mic is allowed for this site, or type."); stopMic(); }, 8000); };
+      quiet();
+      rec.onresult = (ev) => { quiet(); let t = ""; for (const r of ev.results) t += r[0].transcript; box.value = (before + t).slice(0, Number(box.maxLength) > 0 ? box.maxLength : 1000); };
       rec.onerror = (ev) => micNote(btn, ev.error === "not-allowed" || ev.error === "service-not-allowed"
         ? "The microphone is blocked. Allow it in your browser's settings, or type instead." : "Didn't catch that. Tap the mic and try again, or type.");
-      rec.onend = () => { btn.classList.remove("on"); btn.setAttribute("aria-pressed", "false"); if (recBtn === btn) { rec = null; recBtn = null; }
+      rec.onend = () => { clearTimeout(recTimer); btn.classList.remove("on"); btn.setAttribute("aria-pressed", "false"); if (recBtn === btn) { rec = null; recBtn = null; }
         const n = noteFor(btn); if (n && /^Listening/.test(n.textContent)) n.textContent = box.value.trim() ? "Check the words, then send." : ""; box.focus(); };
       btn.classList.add("on"); btn.setAttribute("aria-pressed", "true"); micNote(btn, "Listening… tap the mic again to stop.");
       try { rec.start(); } catch (_) { rec = null; recBtn = null; btn.classList.remove("on"); micNote(btn, "The mic couldn't start. Type instead."); }
