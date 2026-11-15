@@ -811,6 +811,14 @@
         li.append(el("div", { class: "chips" }, ...m.chips.map((c) => el("button", { type: "button", class: "chip", onclick: () => sendTalk(c) }, c))));
       ol.append(li);
     });
+    // Questions with the planning team show at the foot of the chat until answered (his test 15 Nov 13:36 ET: an answer that
+    // isn't there yet looked like nothing happened).
+    const ck = await sb.from("trip_items").select("payload, created_at").eq("trip_id", current.id).eq("kind", "note").order("created_at");
+    for (const it of (ck.error ? [] : ck.data || [])) {
+      const p = it.payload || {}; if (p.type !== "check" || p.status !== "open") continue;
+      const tmc = T && T.TEAM.find((x) => x.key === p.by);
+      ol.append(el("li", { class: "pending small" }, (tmc ? tmc.name : "The team") + " is checking: " + String(p.question || "") + ". The answer will appear here" + (shareLive ? "." : " once you send the trip to the planner (Trip tab).")));
+    }
     ol.scrollTop = ol.scrollHeight;
     lastThread = rows; paintRail(rows, false);
     // The explore path: while the trip has no places yet and Arlo's last word offers no choices of its own.
