@@ -858,6 +858,13 @@
   // What a yes does, the same for a tap and for a typed answer: written with the owner's own sign-in.
   async function doCard(p, opt) {
     if (p.type === "traveler") return addTraveler(p);
+    // Sending the trip to the planning team from the chat (his direction, 15 Nov 13:41 and 13:54 ET): the same share the
+    // Trip tab makes, with the owner's sign-in, and never a second live one.
+    if (p.type === "share") {
+      if (!shareLive) { const { error } = await sb.from("planner_shares").insert({ trip_id: current.id }); if (error) return { error, said: "" }; }
+      await loadShare(); dotTab("trip");
+      return { error: null, said: "Yes, send it to the planning team." };
+    }
     if (p.type === "choice") {   // a direction for the trip, saved as a decision item; it books nothing
       const o = (p.options || [])[opt - 1]; if (!o) return { error: { message: "pick one of the options" }, said: "" };
       const payload = { v: 1, topic: p.topic, chosen: o.label, tradeoff: o.tradeoff, options: p.options.map((x) => x.label), by: p.by, decided_at: new Date().toISOString() };
@@ -879,7 +886,7 @@
     }
     return { error: { message: "unknown card" }, said: "" };
   }
-  const noSaid = (p) => p.type === "traveler" ? "Not " + p.first_name + " for now." : p.type === "choice" ? p.topic + ": not decided yet." : "Not now.";
+  const noSaid = (p) => p.type === "traveler" ? "Not " + p.first_name + " for now." : p.type === "choice" ? p.topic + ": not decided yet." : p.type === "share" ? "Not sending it yet." : "Not now.";
   // Arlo said which open cards his typed message answered: do what the taps would have, and tell Arlo nothing more.
   async function applyAnswers(answered) {
     const note = $("#talk-note");
@@ -895,11 +902,12 @@
     const p = m.payload || {}, mine = current && user && current.owner === user.id;
     const T = window.TravelTeam, tm = T && T.TEAM.find((x) => x.key === ((p.type === "choice" && p.by) || m.agent || "steward"));   // a choice is Arlo's card in the store, asked by p.by
     const who = tm ? tm.name + " · " + (tm.key === "steward" ? "Steward" : tm.role) : "Arlo · Steward";
-    const badge = p.type === "choice" ? "to decide" : p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save";
+    const badge = p.type === "choice" ? "to decide" : p.type === "share" ? "to send" : p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save";
     const li = el("li", { class: "msg agent proposal" + (p.type === "choice" ? " choice" : "") }, el("div", { class: "msg-who" }, who + " ", el("span", { class: "badge-prop" }, badge)), el("div", { class: "msg-body" }, m.body));
     if (p.type === "choice") li.append(el("ol", { class: "choice-opts" }, ...(p.options || []).map((o) => el("li", {}, el("strong", {}, o.label), " ", el("span", { class: "muted" }, o.tradeoff)))),
       el("p", { class: "muted small" }, "General, not yet checked. Choosing sets the direction; nothing is booked."));
     if (p.type === "traveler") li.append(el("p", { class: "muted small" }, "Only add people who've agreed to be on the pilot, as the notice asks."));
+    if (p.type === "share") li.append(el("p", { class: "muted small" }, "The planner reads the trip in the store and every read is logged on the Trip tab. You can stop sharing there any time."));
     if (cardDone.has(m.id)) { li.classList.add("done"); li.append(el("p", { class: "small card-done" }, cardDone.get(m.id))); return li; }
     if (!open || !mine || $("#talk-text").disabled) return li;
     openCards.add(m.id); cardRows.set(m.id, m);
@@ -913,7 +921,7 @@
     };
     const no = el("button", { type: "button", class: "chip" }, "Not now");
     const picks = p.type === "choice" ? (p.options || []).map((o, i) => el("button", { type: "button", class: "chip yes", "data-opt": String(i + 1) }, o.label))
-      : [el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? (p.on_trip === false ? "Save" : "Add to trip") : "Save")];
+      : [el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? (p.on_trip === false ? "Save" : "Add to trip") : p.type === "share" ? "Send to the team" : "Save")];
     const all = [...picks, no], lock = (v) => all.forEach((b) => { b.disabled = v; });
     picks.forEach((b, i) => b.addEventListener("click", async () => {
       lock(true);
