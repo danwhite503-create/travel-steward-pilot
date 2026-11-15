@@ -1003,6 +1003,23 @@
         : data.dates_changed ? "Arlo updated the trip. Edit trip changes it." : tabsOn ? "Arlo updated the brief in the Trip tab." : "Arlo updated the brief below.");
       note.textContent = said.join(" ");   // both notes when Tove and Arlo changed things in one turn (review L9)
     }
+    // What Arlo saved from the owner's own words (his choice 15 Nov 15:21 ET): said here with undo, and on the Trip tab.
+    const st = (data && Array.isArray(data.settled) ? data.settled : []).filter((x) => x && x.id);
+    if (st.length) {
+      await loadItems(); dotTab("trip");
+      for (const x of st) {
+        const undo = el("button", { type: "button", class: "link small" }, "Undo");
+        const line = el("span", { class: "settled-note" }, " Saved: " + (x.type === "pick" ? x.chosen + ", on the itinerary as Planned." : x.topic + ": " + x.chosen + "."), " ", undo);
+        undo.addEventListener("click", async () => {
+          undo.disabled = true;
+          const r = await sb.from("trip_items").delete().eq("id", x.id);
+          if (r.error) { undo.disabled = false; flash(explain(r.error), "bad"); return; }
+          line.replaceChildren(" Undone: " + (x.type === "pick" ? x.chosen : x.topic) + " is no longer saved.");
+          await loadItems(); loadThread();
+        });
+        note.append(line);
+      }
+    }
   }
   $("#talk-form").addEventListener("submit", (e) => { e.preventDefault(); stopMic(); sendTalk($("#talk-text").value); });
 
