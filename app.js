@@ -471,8 +471,8 @@
   function markBookedLegs(titles) {
     for (const li of document.querySelectorAll("li[data-leg-title]")) {
       const done = titles.has(li.dataset.legTitle.trim().toLowerCase());
-      const m = li.querySelector(".booked-mark"), b = li.querySelector(".booked-btn");
-      if (m) m.hidden = !done; if (b) b.hidden = done;
+      const m = li.querySelector(".booked-mark"), b = li.querySelector(".booked-btn"), pl = li.querySelector(".planned-mark");
+      if (m) m.hidden = !done; if (b) b.hidden = done; if (pl) pl.hidden = done;
     }
   }
   async function paintPoints() {
@@ -813,11 +813,24 @@
     });
     // Questions with the planning team show at the foot of the chat until answered (his test 15 Nov 13:36 ET: an answer that
     // isn't there yet looked like nothing happened).
-    const ck = await sb.from("trip_items").select("payload, created_at").eq("trip_id", current.id).eq("kind", "note").order("created_at");
+    const ck = await sb.from("trip_items").select("kind, payload, created_at").eq("trip_id", current.id).in("kind", ["note", "decision"]).order("created_at");
     for (const it of (ck.error ? [] : ck.data || [])) {
-      const p = it.payload || {}; if (p.type !== "check" || p.status !== "open") continue;
+      const p = it.payload || {}; if (it.kind !== "note" || p.type !== "check" || p.status !== "open") continue;
       const tmc = T && T.TEAM.find((x) => x.key === p.by);
       ol.append(el("li", { class: "pending small" }, (tmc ? tmc.name : "The team") + " is checking: " + String(p.question || "") + ". The answer will appear here" + (shareLive ? "." : " once you send the trip to the planner (Trip tab).")));
+    }
+    // Share once per trip (his choice 15 Nov 14:24 ET): once something is decided and the trip isn't with the planning
+    // team yet, one prompt sits at the foot of the chat; after the share every later decision reaches the team on its own.
+    const decidedAny = (ck.error ? [] : ck.data || []).some((it) => it.kind === "decision");
+    if (decidedAny && !shareLive && current.owner === user.id) {
+      const btn = el("button", { type: "button", class: "chip yes" }, "Send to the team");
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const { error } = await sb.from("planner_shares").insert({ trip_id: current.id });
+        if (error) { btn.disabled = false; $("#talk-note").textContent = explain(error); return; }
+        await loadShare(); dotTab("trip"); loadThread();
+      });
+      ol.append(el("li", { class: "pending small share-prompt" }, "Your choices are saved on the trip. The planning team sees them, and everything decided after, once the trip is sent. ", btn));
     }
     ol.scrollTop = ol.scrollHeight;
     lastThread = rows; paintRail(rows, false);
@@ -865,6 +878,7 @@
       await loadShare(); dotTab("trip");
       return { error: null, said: "Yes, send it to the planning team." };
     }
+    if (p.type === "pick") return pickOption(p.option);
     if (p.type === "choice") {   // a direction for the trip, saved as a decision item; it books nothing
       const o = (p.options || [])[opt - 1]; if (!o) return { error: { message: "pick one of the options" }, said: "" };
       const payload = { v: 1, topic: p.topic, chosen: o.label, tradeoff: o.tradeoff, options: p.options.map((x) => x.label), by: p.by, decided_at: new Date().toISOString() };
@@ -886,7 +900,7 @@
     }
     return { error: { message: "unknown card" }, said: "" };
   }
-  const noSaid = (p) => p.type === "traveler" ? "Not " + p.first_name + " for now." : p.type === "choice" ? p.topic + ": not decided yet." : p.type === "share" ? "Not sending it yet." : "Not now.";
+  const noSaid = (p) => p.type === "traveler" ? "Not " + p.first_name + " for now." : p.type === "choice" ? p.topic + ": not decided yet." : p.type === "pick" ? "Not " + p.option + " yet." : p.type === "share" ? "Not sending it yet." : "Not now.";
   // Arlo said which open cards his typed message answered: do what the taps would have, and tell Arlo nothing more.
   async function applyAnswers(answered) {
     const note = $("#talk-note");
@@ -902,11 +916,12 @@
     const p = m.payload || {}, mine = current && user && current.owner === user.id;
     const T = window.TravelTeam, tm = T && T.TEAM.find((x) => x.key === ((p.type === "choice" && p.by) || m.agent || "steward"));   // a choice is Arlo's card in the store, asked by p.by
     const who = tm ? tm.name + " · " + (tm.key === "steward" ? "Steward" : tm.role) : "Arlo · Steward";
-    const badge = p.type === "choice" ? "to decide" : p.type === "share" ? "to send" : p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save";
+    const badge = p.type === "choice" || p.type === "pick" ? "to decide" : p.type === "share" ? "to send" : p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save";
     const li = el("li", { class: "msg agent proposal" + (p.type === "choice" ? " choice" : "") }, el("div", { class: "msg-who" }, who + " ", el("span", { class: "badge-prop" }, badge)), el("div", { class: "msg-body" }, m.body));
     if (p.type === "choice") li.append(el("ol", { class: "choice-opts" }, ...(p.options || []).map((o) => el("li", {}, el("strong", {}, o.label), " ", el("span", { class: "muted" }, o.tradeoff)))),
       el("p", { class: "muted small" }, "General, not yet checked. Choosing sets the direction; nothing is booked."));
     if (p.type === "traveler") li.append(el("p", { class: "muted small" }, "Only add people who've agreed to be on the pilot, as the notice asks."));
+    if (p.type === "pick") li.append(el("p", { class: "muted small" }, "Nothing is booked. Each part shows Planned on the itinerary until its booking is on the trip."));
     if (p.type === "share") li.append(el("p", { class: "muted small" }, "The planner reads the trip in the store and every read is logged on the Trip tab. You can stop sharing there any time."));
     if (cardDone.has(m.id)) { li.classList.add("done"); li.append(el("p", { class: "small card-done" }, cardDone.get(m.id))); return li; }
     if (!open || !mine || $("#talk-text").disabled) return li;
@@ -921,7 +936,7 @@
     };
     const no = el("button", { type: "button", class: "chip" }, "Not now");
     const picks = p.type === "choice" ? (p.options || []).map((o, i) => el("button", { type: "button", class: "chip yes", "data-opt": String(i + 1) }, o.label))
-      : [el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? (p.on_trip === false ? "Save" : "Add to trip") : p.type === "share" ? "Send to the team" : "Save")];
+      : [el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? (p.on_trip === false ? "Save" : "Add to trip") : p.type === "share" ? "Send to the team" : p.type === "pick" ? "Go with it" : "Save")];
     const all = [...picks, no], lock = (v) => all.forEach((b) => { b.disabled = v; });
     picks.forEach((b, i) => b.addEventListener("click", async () => {
       lock(true);
@@ -990,6 +1005,40 @@
   }
   $("#talk-form").addEventListener("submit", (e) => { e.preventDefault(); stopMic(); sendTalk($("#talk-text").value); });
 
+  // A concrete pick (his direction 15 Nov 14:24 ET): one of the plan's options goes on the itinerary as Planned. Saved as a
+  // decision (topic "Which way"), with a copy of its legs so the itinerary holds even if the plan is rewritten; a later
+  // pick replaces it. Each part turns Booked only when a booking on the trip carries its title (D-500, D-501).
+  const PICK_TOPIC = "Which way";
+  async function pickOption(name) {
+    const opts = currentPlan && Array.isArray(currentPlan.options) ? currentPlan.options : [];
+    const o = opts.find((x) => foldName(x.name) === foldName(name));
+    if (!o) return { error: { message: "that option isn't on the plan any more" }, said: "" };
+    const legs = (Array.isArray(o.legs) ? o.legs : []).slice(0, 40).map((g) => ({ title: String(g.title || "").slice(0, 120), by: String(g.by || ""), day: Number.isInteger(g.day) ? g.day : null,
+      book: g.book && safeLink(g.book.url) ? { url: safeLink(g.book.url), label: String(g.book.label || "").slice(0, 80) } : null }));
+    const payload = { v: 1, type: "pick", topic: PICK_TOPIC, chosen: String(o.name || "").slice(0, 80), option_id: o.id ? String(o.id).slice(0, 4) : null, legs, by: "steward", decided_at: new Date().toISOString() };
+    const { error } = await sb.from("trip_items").insert({ trip_id: current.id, kind: "decision", payload });
+    if (!error) { await loadItems(); dotTab("trip"); }
+    return { error, said: "Go with " + payload.chosen + "." };
+  }
+  const LEG_TAG = { rail: "Train", air: "Flight", stay: "Stay", dining: "Table", events: "Event", around: "Around" };
+  function paintItinerary(pick) {
+    const box = $("#itinerary"); if (!box) return; box.replaceChildren();
+    const legs = pick && Array.isArray(pick.legs) ? pick.legs : [];
+    box.hidden = !pick;
+    if (!pick) return;
+    box.append(el("h3", {}, "Itinerary"), el("p", { class: "muted small" }, pick.chosen + (pick.decided_at ? ", picked " + fmtDate(String(pick.decided_at).slice(0, 10)) : "") + ". Each part is Planned until its booking is on the trip; nothing is booked for you."));
+    if (!legs.length) { box.append(el("p", { class: "muted small" }, "This option has no parts listed yet.")); return; }
+    const ul = el("ol", { class: "legs itin" });
+    for (const g of legs) {
+      const d = legDate(g);
+      ul.append(el("li", { "data-leg-title": g.title }, el("div", { class: "leg-body" },
+        el("div", { class: "leg-top" }, el("span", { class: "tag" }, LEG_TAG[g.by] || "Other"), g.day ? el("span", { class: "day" }, "Day " + g.day + (d ? " · " + fmtDate(d) : "")) : "", el("span", { class: "leg-title" }, g.title)),
+        el("div", { class: "leg-foot" }, el("span", { class: "planned-mark" }, "Planned"), el("span", { class: "booked-mark", hidden: "" }, "Booked"),
+          g.book && g.book.url ? extLink(g.book.url, g.book.label || "Book on the seller's site", "book") : "",
+          g.book && g.book.url && tripCanWrite ? el("button", { type: "button", class: "link booked-btn", onclick: () => prefillBooking(g) }, "I've booked this") : ""))));
+    }
+    box.append(ul);
+  }
   async function loadItems() {
     const { data, error } = await sb.from("trip_items").select("id, kind, payload, created_by, created_at, updated_at").eq("trip_id", current.id).order("created_at");
     if (error) return flash(explain(error), "bad");
@@ -1001,7 +1050,10 @@
     const planItem = (data || []).filter((i) => i.kind === "plan").pop();
     currentPlan = planItem ? planItem.payload || {} : null;
     currentPlanAt = planItem ? planItem.created_at : null;
-    renderPlan(currentPlan); paintWork(); paintStale(); if (currentPlan) paintBookings();
+    renderPlan(currentPlan); paintWork(); paintStale();
+    const pickRow = notes.filter((i) => i.kind === "decision" && i.payload && i.payload.type === "pick").pop();
+    paintItinerary(pickRow ? pickRow.payload : null);
+    if (currentPlan || pickRow) paintBookings();
     // With a plan on the trip, the brief folds under its heading; without one, it stays open.
     $("#brief-wrap").open = !planItem;
     for (const i of notes) {
@@ -1013,7 +1065,8 @@
           + (i.payload.status === "answered" ? " (answer in the chat)" : "")
         : i.kind === "decision" && i.payload && i.payload.topic ? i.payload.topic + ": " + i.payload.chosen + (tmd ? " (asked by " + tmd.name + ")" : "")
         : (i.payload && (i.payload.text || i.payload.t)) || JSON.stringify(i.payload);
-      const li = el("li", {}, el("span", { class: "tag" }, chk ? (i.payload.status === "answered" ? "checked" : "checking") : i.kind), el("span", { class: "grow" }, text));
+      const tag = chk ? (i.payload.status === "answered" ? "checked" : "checking") : i.kind === "decision" ? (i.payload && i.payload.type === "pick" ? "picked" : "direction") : i.kind;
+      const li = el("li", {}, el("span", { class: "tag" }, tag), el("span", { class: "grow" }, text));
       if (i.created_by === user.id || current.owner === user.id) li.append(" ", el("button", { type: "button", class: "link", onclick: async () => {
         if (!(await confirmBox("Delete this item?"))) return;
         const r = await sb.from("trip_items").delete().eq("id", i.id);
@@ -1320,6 +1373,15 @@
         ul.append(li);
       }
       v.append(el("h4", {}, "Day by day"), ul);
+    }
+    if (tripCanWrite && o.name) {
+      const go = el("button", { type: "button" }, "Go with this one");
+      go.addEventListener("click", async () => {
+        go.disabled = true; const r = await pickOption(o.name);
+        if (r.error) { go.disabled = false; flash(explain(r.error), "bad"); return; }
+        flash("On the itinerary as Planned. Nothing is booked.", "ok"); loadThread();
+      });
+      v.append(el("div", { class: "pick-row" }, go, el("span", { class: "muted small" }, " Puts its parts on the itinerary as Planned; you book each one on the seller's page.")));
     }
     return v;
   }
