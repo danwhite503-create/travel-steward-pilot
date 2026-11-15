@@ -348,7 +348,8 @@
       else P.trip.append(n);
     }
     P.wallet.append(el("section", { class: "panel", id: "wallet-people", "aria-label": "Passports" }),
-      el("section", { class: "panel muted small", id: "wallet-later" }, "Bookings and points come here once the next version of the notice is approved: vendor, dates, amount and status, never booking references, ticket or member numbers."));
+      el("section", { class: "panel", id: "wallet-bookings", "aria-label": "Bookings" }),
+      el("section", { class: "panel", id: "wallet-points", "aria-label": "Your points" }));
     // The team comes first in reading order, as it shows on a phone; on a computer CSS moves it to the right (review L11).
     const body = el("div", { class: "trip-body" }, rail, el("div", { class: "trip-main" }, nav, ...panels));
     at.after(body);
@@ -382,6 +383,7 @@
   // Wallet & passport: the travelers going on this trip, with the passport expiry the pilot keeps (dates only).
   function paintWallet(bp) {
     const box = $("#wallet-people"); if (!box) return;
+    paintBookings(); paintPoints();
     const going = new Set(Array.isArray(bp && bp.who) ? bp.who : []);
     const rows = (travelerRows || []).filter((t) => going.has(t.id));
     box.replaceChildren(el("h3", {}, "Passports"));
@@ -391,6 +393,88 @@
     for (const t of rows) ul.append(el("li", {}, el("span", { class: "who" }, [t.first_name, t.last_name].filter(Boolean).join(" ")),
       el("span", { class: "muted grow" }, [t.nationality, t.passport_expires ? "passport expires " + fmtDate(t.passport_expires).replace(/^[A-Za-z]{3}, /, "") : "passport expiry not added"].filter(Boolean).join(", "))));
     box.append(ul, el("p", { class: "muted small" }, "Entry rules for the countries on the route are checked by the planning team at the source; Arlo's chat can't confirm them."));
+  }
+  // Bookings and points (store v0.2.0, his choice 11 Nov). Until the store has them (the change waits for notice v5),
+  // the sections say so. Vendor, dates, amount, status and payment only: never a booking reference, ticket or member
+  // number (no field for them, and the store's never-kept check refuses long numbers and codes; a short reference such
+  // as a six-letter airline code can slip past it, so the form asks people not to type one).
+  const BOOK_KIND = { stay: "Stay", rail: "Train", air: "Flight", coach: "Coach", ferry: "Ferry", event: "Event", dining: "Table", other: "Other" };
+  const PAY_WORD = { paid: "paid", due: "due later", at_property: "pay at the property" };
+  const missingTable = (e) => e && (e.code === "42P01" || e.code === "PGRST205" || /does not exist|Could not find the table/i.test(String(e.message || "")));
+  const money = (a, c) => (a == null ? "" : (c || "") + " " + Number(a).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  async function paintBookings() {
+    const box = $("#wallet-bookings"); if (!box || !current) return;
+    const { data, error } = await sb.from("bookings").select("id, kind, vendor, title, date_from, date_to, amount, currency, status, pay, note, created_by").eq("trip_id", current.id).order("date_from");
+    box.replaceChildren(el("h3", {}, "Bookings"));
+    if (error) { box.append(el("p", { class: "muted small" }, missingTable(error) ? "Bookings come here once the next version of the notice is approved: vendor, dates, amount and status, never booking references or ticket numbers." : explain(error))); return; }
+    const rows = data || [];
+    const ul = el("ul", { class: "list bookings" });
+    for (const b of rows) {
+      const when = [b.date_from && fmtDate(b.date_from), b.date_to && b.date_to !== b.date_from && fmtDate(b.date_to)].filter(Boolean).join(" – ");
+      const li = el("li", { class: b.status === "cancelled" ? "cancelled" : "" },
+        el("span", { class: "tag" }, BOOK_KIND[b.kind] || "Other"),
+        el("div", { class: "grow" }, el("div", { class: "who" }, String(b.title)),
+          el("div", { class: "muted small" }, [String(b.vendor), when, money(b.amount, b.currency).trim(), b.pay && PAY_WORD[b.pay], b.status !== "booked" && b.status].filter(Boolean).join(" · ")),
+          b.note ? el("div", { class: "muted small" }, String(b.note)) : ""));
+      if (tripCanWrite) li.append(el("button", { type: "button", class: "link small", "aria-label": "Remove " + b.title, onclick: async () => {
+        if (!(await confirmBox("Remove this booking from the trip? This doesn't cancel it with the seller."))) return;
+        const r = await sb.from("bookings").delete().eq("id", b.id); r.error ? flash(explain(r.error), "bad") : paintBookings();
+      } }, "Remove"));
+      ul.append(li);
+    }
+    if (!rows.length) ul.append(el("li", { class: "empty" }, "Nothing booked yet. Add what you've booked so the whole trip is in one place."));
+    box.append(ul);
+    if (!tripCanWrite) return;
+    const f = el("form", { class: "stack book-add", autocomplete: "off" },
+      el("div", { class: "row" },
+        el("label", { class: "field" }, "What", el("select", { name: "kind" }, ...Object.entries(BOOK_KIND).map(([k, v]) => el("option", { value: k }, v)))),
+        el("label", { class: "field" }, "Seller", el("input", { name: "vendor", maxlength: "80", required: "", placeholder: "e.g. the hotel or railway" }))),
+      el("label", { class: "field" }, "Short description", el("input", { name: "title", maxlength: "120", required: "", placeholder: "e.g. Two nights in Sapporo" })),
+      el("div", { class: "row" }, el("label", { class: "field" }, "From", el("input", { type: "date", name: "date_from" })), el("label", { class: "field" }, "To", el("input", { type: "date", name: "date_to" }))),
+      el("div", { class: "row" }, el("label", { class: "field" }, "Amount", el("input", { type: "number", name: "amount", min: "0", step: "0.01", inputmode: "decimal" })),
+        el("label", { class: "field" }, "Currency", el("input", { name: "currency", maxlength: "3", placeholder: "USD", autocapitalize: "characters" })),
+        el("label", { class: "field" }, "Payment", el("select", { name: "pay" }, el("option", { value: "" }, "—"), ...Object.entries(PAY_WORD).map(([k, v]) => el("option", { value: k }, v))))),
+      el("p", { class: "muted small" }, "Leave out booking references, ticket and seat numbers: they stay in the seller's email."),
+      el("button", { type: "submit" }, "Add booking"));
+    f.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const v = (n) => f.elements.namedItem(n).value.trim();
+      const amount = v("amount") === "" ? null : Number(v("amount")), currency = v("currency").toUpperCase() || null;
+      if ((amount === null) !== (currency === null)) return flash("Add both the amount and its currency, or neither.", "bad");
+      if (currency && !/^[A-Z]{3}$/.test(currency)) return flash("Currency is a three-letter code, like USD or JPY.", "bad");
+      for (const n of ["vendor", "title"]) { const nk = neverKept(v(n)); if (nk) return flash("Not added: this looks like " + nk + ", which the pilot never keeps.", "bad"); }
+      const r = await sb.from("bookings").insert({ trip_id: current.id, kind: v("kind"), vendor: v("vendor"), title: v("title"), date_from: v("date_from") || null, date_to: v("date_to") || null, amount, currency, pay: v("pay") || null });
+      if (r.error) return flash(explain(r.error), "bad");
+      flash("Booking added.", "ok"); paintBookings();
+    });
+    box.append(f);
+  }
+  async function paintPoints() {
+    const box = $("#wallet-points"); if (!box) return;
+    const { data, error } = await sb.from("points").select("id, programme, balance, unit, as_of").order("programme");
+    box.replaceChildren(el("h3", {}, "Your points"), el("p", { class: "muted small" }, "Only you see these. Programme names and balances only, never member numbers or passwords."));
+    if (error) { box.append(el("p", { class: "muted small" }, missingTable(error) ? "Points come here once the next version of the notice is approved." : explain(error))); return; }
+    const ul = el("ul", { class: "list" });
+    for (const p of data || []) ul.append(el("li", {}, el("span", { class: "who" }, String(p.programme)),
+      el("span", { class: "muted grow" }, Number(p.balance).toLocaleString("en-US") + " " + p.unit + " · as of " + fmtDate(p.as_of).replace(/^[A-Za-z]{3}, /, "")),
+      el("button", { type: "button", class: "link small", "aria-label": "Remove " + p.programme, onclick: async () => {
+        const r = await sb.from("points").delete().eq("id", p.id); r.error ? flash(explain(r.error), "bad") : paintPoints(); } }, "Remove")));
+    if (!(data || []).length) ul.append(el("li", { class: "empty" }, "No balances yet."));
+    const f = el("form", { class: "row points-add", autocomplete: "off" },
+      el("label", { class: "field" }, "Programme", el("input", { name: "programme", maxlength: "80", required: "", placeholder: "e.g. an airline's miles" })),
+      el("label", { class: "field" }, "Balance", el("input", { type: "number", name: "balance", min: "0", step: "1", required: "", inputmode: "numeric" })),
+      el("label", { class: "field" }, "Unit", el("select", { name: "unit" }, ...["points", "miles", "credit"].map((u) => el("option", { value: u }, u)))),
+      el("button", { type: "submit" }, "Save"));
+    f.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const programme = f.elements.namedItem("programme").value.replace(/\s+/g, " ").trim(), balance = Number(f.elements.namedItem("balance").value);
+      const nk = neverKept(programme); if (nk) return flash("Not saved: this looks like " + nk + ", which the pilot never keeps.", "bad");
+      if (!Number.isInteger(balance) || balance < 0) return flash("A balance is a whole number.", "bad");
+      const r = await sb.from("points").upsert({ programme, balance, unit: f.elements.namedItem("unit").value, as_of: new Date().toISOString().slice(0, 10) }, { onConflict: "user_id,programme" });
+      if (r.error) return flash(explain(r.error), "bad");
+      paintPoints();
+    });
+    box.append(ul, f);
   }
   setupTripTabs();
 
@@ -844,6 +928,10 @@
     if (data && Array.isArray(data.answered) && data.answered.length) await applyAnswers(data.answered);
     await loadThread();
     const said = [];
+    // Step 2: a question flagged for the planning team shows on the Trip tab until its answer is posted here.
+    if (data && data.checks_failed) { said.push("That question couldn't be passed to the planning team just now. Ask again in a minute."); note.textContent = said.join(" "); }
+    if (data && data.checks_added > 0) { await loadItems(); said.push(data.checks_added === 1 ? "A question is with the planning team; the answer comes back here (see Trip)." : data.checks_added + " questions are with the planning team; the answers come back here (see Trip).");
+      if (!shareLive) said.push("The team can only answer once you send the trip to the planner (Trip tab)."); dotTab("trip"); note.textContent = said.join(" "); }
     if (data && data.packing_changed) { await loadItems(); said.push(tabsOn ? "Tove updated your Suitcase." : "Tove updated the packing list below."); dotTab("suitcase"); note.textContent = said.join(" "); }
     if (data && (data.brief_changed || data.dates_changed)) {
       await loadTrips(); current = trips.find((t) => t.id === current.id) || current;
@@ -877,9 +965,13 @@
     for (const i of notes) {
       if (i.kind === "decision" && i.payload && i.payload.topic && lastDec.get(i.payload.topic) !== i.id) continue;
       const tmd = i.kind === "decision" && window.TravelTeam && window.TravelTeam.TEAM.find((x) => x.key === i.payload.by);
-      const text = i.kind === "decision" && i.payload && i.payload.topic ? i.payload.topic + ": " + i.payload.chosen + (tmd ? " (asked by " + tmd.name + ")" : "")
+      const chk = i.kind === "note" && i.payload && i.payload.type === "check";
+      const tmc = chk && window.TravelTeam && window.TravelTeam.TEAM.find((x) => x.key === i.payload.by);
+      const text = chk ? (tmc ? tmc.name : "The team") + (i.payload.status === "answered" ? " checked: " : " is checking: ") + i.payload.question
+          + (i.payload.status === "answered" ? " (answer in the chat)" : "")
+        : i.kind === "decision" && i.payload && i.payload.topic ? i.payload.topic + ": " + i.payload.chosen + (tmd ? " (asked by " + tmd.name + ")" : "")
         : (i.payload && (i.payload.text || i.payload.t)) || JSON.stringify(i.payload);
-      const li = el("li", {}, el("span", { class: "tag" }, i.kind), el("span", { class: "grow" }, text));
+      const li = el("li", {}, el("span", { class: "tag" }, chk ? (i.payload.status === "answered" ? "checked" : "checking") : i.kind), el("span", { class: "grow" }, text));
       if (i.created_by === user.id || current.owner === user.id) li.append(" ", el("button", { type: "button", class: "link", onclick: async () => {
         if (!(await confirmBox("Delete this item?"))) return;
         const r = await sb.from("trip_items").delete().eq("id", i.id);
@@ -1412,7 +1504,7 @@
     if (!(r.data || []).length) ul.append(el("li", { class: "empty" }, live ? "Not read yet." : "Nothing read yet."));
   }
   // The planner reads a shared trip in the store (D-553): sending is the share, with no file to download or email.
-  const READ_HOW = { store: "read by the planner", export: "file made for the planner" };
+  const READ_HOW = { store: "read by the planner", export: "file made for the planner", checks: "questions read by the planner" };
   // Before sending, say what's missing (his phone test, D-554): no brief, no one ticked, no preferences.
   function sendGaps() {
     const bp = (briefs[current.id] || {}).payload;
