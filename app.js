@@ -898,7 +898,8 @@
       const { error } = await sb.from("profiles").upsert({ user_id: user.id, display_name: name, home_city: p.city, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
       return { error, said: "Saved " + p.city + " as my home city." };
     }
-    return { error: { message: "unknown card" }, said: "" };
+    // A card this copy of the page doesn't know (his test 15 Nov 15:11 ET): the server is newer than the open page.
+    return { error: { message: "This card needs the latest version of the page. Reload the page, then tap it again." }, said: "" };
   }
   const noSaid = (p) => p.type === "traveler" ? "Not " + p.first_name + " for now." : p.type === "choice" ? p.topic + ": not decided yet." : p.type === "pick" ? "Not " + p.option + " yet." : p.type === "share" ? "Not sending it yet." : "Not now.";
   // Arlo said which open cards his typed message answered: do what the taps would have, and tell Arlo nothing more.
