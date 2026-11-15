@@ -536,39 +536,54 @@
   // nothing is sent until the traveler taps Send, so the never-kept check and the review of the words still apply.
   // Shown only where the browser has speech recognition; elsewhere a hint points to the phone keyboard's mic.
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  // iPhone and iPad (his phone test, 14 Nov 22:34 ET): Safari's speech service cut off at pauses, then showed the mic on
-  // while hearing nothing. There the mic button sends him to the keyboard's own mic (Apple's dictation), which is reliable.
+  // iPhone and iPad (his phone tests, 14 Nov 22:34 and 23:32 ET): Safari's speech service cuts off at pauses or stays on
+  // hearing nothing. So each tap starts a fresh listener; one that ends while he's still talking is restarted with the
+  // words kept; and if nothing is heard in 5 seconds (8 elsewhere) it stops and points to the keyboard's own mic.
   const IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  let rec = null, recBtn = null, recTimer = null;
-  function stopMic() { if (rec) { try { rec.stop(); } catch (_) {} } }
+  const QUIET_MS = IOS ? 5000 : 8000, MAX_RESTARTS = 20;
+  let rec = null, recBtn = null, recTimer = null, wantOn = false;
+  function stopMic() { wantOn = false; clearTimeout(recTimer); if (rec) { try { rec.stop(); } catch (_) {} } }
   const noteFor = (btn) => document.getElementById(btn.dataset.for === "start-text" ? "start-note" : "talk-note");
   function micNote(btn, text) { const n = noteFor(btn); if (n) n.textContent = text; }
+  // Joins a session's results; drops a result that only repeats the one before it (Safari can send text again).
+  function joinResults(results) {
+    const parts = [];
+    for (const r of results) { const t = (r && r[0] && r[0].transcript || "").trim(); if (!t) continue;
+      const last = parts[parts.length - 1];
+      if (last && t.toLowerCase().startsWith(last.toLowerCase())) parts[parts.length - 1] = t; else parts.push(t); }
+    return parts.join(" ");
+  }
   for (const btn of document.querySelectorAll("button.mic")) {
     if (CFG.STEWARD_LIVE !== true) continue;
     if (!SR) { const h = $("#start-mic-hint"); if (h && btn.dataset.for === "start-text") h.textContent = "Tip: on a phone, tap the mic on your keyboard to speak."; continue; }
     btn.hidden = false;
-    if (IOS) {
-      const h = $("#start-mic-hint"); if (h && btn.dataset.for === "start-text") h.textContent = "Tip: tap the mic on your keyboard to speak.";
-      btn.addEventListener("click", () => { const box = document.getElementById(btn.dataset.for); if (box) box.focus();
-        micNote(btn, "On iPhone, tap the mic on your keyboard to speak; it hears you better than the browser does."); });
-      continue;
-    }
     if (btn.dataset.for === "start-text") { const h = $("#start-mic-hint"); if (h) h.textContent = "Tap to speak instead of typing"; }
     btn.addEventListener("click", () => {
       if (rec && recBtn === btn) { stopMic(); return; }
       stopMic();
-      const box = document.getElementById(btn.dataset.for); const before = box.value ? box.value.trim() + " " : "";
-      rec = new SR(); recBtn = btn; rec.lang = navigator.language || "en-US"; rec.interimResults = true; rec.continuous = true;
-      // Keeps listening through pauses until he taps stop; if nothing is heard in 8 seconds, it stops and says so.
-      const quiet = () => { clearTimeout(recTimer); recTimer = setTimeout(() => { micNote(btn, "Didn't hear anything. Check the mic is allowed for this site, or type."); stopMic(); }, 8000); };
-      quiet();
-      rec.onresult = (ev) => { quiet(); let t = ""; for (const r of ev.results) t += r[0].transcript; box.value = (before + t).slice(0, Number(box.maxLength) > 0 ? box.maxLength : 1000); };
-      rec.onerror = (ev) => micNote(btn, ev.error === "not-allowed" || ev.error === "service-not-allowed"
-        ? "The microphone is blocked. Allow it in your browser's settings, or type instead." : "Didn't catch that. Tap the mic and try again, or type.");
-      rec.onend = () => { clearTimeout(recTimer); btn.classList.remove("on"); btn.setAttribute("aria-pressed", "false"); if (recBtn === btn) { rec = null; recBtn = null; }
-        const n = noteFor(btn); if (n && /^Listening/.test(n.textContent)) n.textContent = box.value.trim() ? "Check the words, then send." : ""; box.focus(); };
-      btn.classList.add("on"); btn.setAttribute("aria-pressed", "true"); micNote(btn, "Listening… tap the mic again to stop.");
-      try { rec.start(); } catch (_) { rec = null; recBtn = null; btn.classList.remove("on"); micNote(btn, "The mic couldn't start. Type instead."); }
+      const box = document.getElementById(btn.dataset.for);
+      const max = Number(box.maxLength) > 0 ? box.maxLength : 1000;
+      let kept = box.value ? box.value.trim() : "", heard = false, restarts = 0;
+      const off = () => { btn.classList.remove("on"); btn.setAttribute("aria-pressed", "false"); rec = null; recBtn = null; };
+      const quiet = () => { clearTimeout(recTimer); recTimer = setTimeout(() => {
+        micNote(btn, heard ? "Stopped after a pause. Check the words, then send." : (IOS ? "Didn't hear anything. Tap the mic on your keyboard to speak instead." : "Didn't hear anything. Check the mic is allowed for this site, or type."));
+        stopMic(); }, QUIET_MS); };
+      const start = () => {
+        const r = new SR(); rec = r; recBtn = btn; r.lang = navigator.language || "en-US"; r.interimResults = true; r.continuous = !IOS;
+        let session = "";
+        r.onresult = (ev) => { heard = true; quiet(); session = joinResults(ev.results); box.value = ((kept ? kept + " " : "") + session).slice(0, max); };
+        r.onerror = (ev) => { if (ev.error === "not-allowed" || ev.error === "service-not-allowed") { wantOn = false;
+          micNote(btn, IOS ? "The mic is blocked for this site, or Dictation is off. Tap the mic on your keyboard instead." : "The microphone is blocked. Allow it in your browser's settings, or type instead."); } };
+        r.onend = () => { if (rec !== r) return;
+          if (session) kept = ((kept ? kept + " " : "") + session).slice(0, max);
+          if (wantOn && restarts < MAX_RESTARTS) { restarts++; try { start(); return; } catch (_) {} }
+          clearTimeout(recTimer); off();
+          const n = noteFor(btn); if (n && /^Listening/.test(n.textContent)) n.textContent = box.value.trim() ? "Check the words, then send." : (IOS ? "Didn't catch that. Tap the mic on your keyboard to speak instead." : "Didn't catch that. Tap the mic and try again, or type.");
+          box.focus(); };
+        r.start();
+      };
+      wantOn = true; btn.classList.add("on"); btn.setAttribute("aria-pressed", "true"); micNote(btn, "Listening… tap the mic again to stop.");
+      try { start(); quiet(); } catch (_) { wantOn = false; off(); micNote(btn, IOS ? "The mic couldn't start. Tap the mic on your keyboard instead." : "The mic couldn't start. Type instead."); }
     });
   }
   const DOORS = { mind: ["New trip", "I have a trip in mind."], explore: ["Exploring ideas", "Help me find somewhere to go."], event: ["Around an event", "I'm planning a trip around an event."] };
