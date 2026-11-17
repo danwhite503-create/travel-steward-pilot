@@ -964,7 +964,7 @@
   }
   function proposalCard(m, open) {
     const p = m.payload || {}, mine = current && user && current.owner === user.id;
-    const T = window.TravelTeam, tm = T && T.TEAM.find((x) => x.key === ((p.type === "choice" && p.by) || m.agent || "steward"));   // a choice is Arlo's card in the store, asked by p.by
+    const T = window.TravelTeam, tm = T && T.TEAM.find((x) => x.key === (((p.type === "choice" || p.type === "book") && p.by) || m.agent || "steward"));   // a choice or book card is Arlo's in the store, from p.by
     const who = tm ? tm.name + " · " + (tm.key === "steward" ? "Steward" : tm.role) : "Arlo · Steward";
     const badge = p.type === "choice" || p.type === "pick" ? "to decide" : p.type === "share" ? "to send" : p.type === "book" ? "to book" : p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save";
     const li = el("li", { class: "msg agent proposal" + (p.type === "choice" ? " choice" : "") }, el("div", { class: "msg-who" }, who + " ", el("span", { class: "badge-prop" }, badge)), el("div", { class: "msg-body" }, m.body));
