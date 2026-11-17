@@ -452,6 +452,15 @@
   }
   // From a plan leg to the booking form (steps 4-5): the leg's kind, seller, title and date, nothing typed for him.
   const LEG_KIND = { rail: "rail", air: "air", stay: "stay", events: "event", dining: "dining" };
+  const SELLER_NAME = { "eurostar.com": "Eurostar", "sncf-connect.com": "SNCF Connect", "thetrainline.com": "Trainline", "ns.nl": "NS" };
+  // A booking's dates: the card's own (flights carry theirs), else the part's day, and for a stay its nights from the title.
+  function bookingDates(p, leg) {
+    if (Array.isArray(p.dates) && /^\d{4}-\d{2}-\d{2}$/.test(p.dates[0] || "")) return [p.dates[0], /^\d{4}-\d{2}-\d{2}$/.test(p.dates[1] || "") ? p.dates[1] : p.dates[0]];
+    const d1 = legDate(leg); if (!d1) return ["", ""];
+    const n = (String(leg.title || "").match(/,\s*(\d+)\s+nights?$/i) || [])[1];
+    if (!n) return [d1, d1];
+    const t = new Date(d1 + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + Number(n)); return [d1, t.toISOString().slice(0, 10)];
+  }
   function legDate(g) {
     const d0 = current && current.date_from ? new Date(current.date_from + "T12:00:00Z") : null, day = Number(g && g.day);
     if (!d0 || !Number.isInteger(day) || day < 1 || day > 60) return "";
@@ -1010,9 +1019,36 @@
         if (!fromPlan) await addItem(leg);
         row.replaceWith(after);
       });
-      done.addEventListener("click", async () => {
-        lockAll(); finish("I've booked " + p.leg + ".");
-        await prefillBooking({ ...leg, book: { url: url || "" } });
+      // I've booked this saves the booking here, in the chat (his test 16 Nov 23:28 ET: the jump to the Wallet form left him
+      // with a half-filled form and nothing added). The seller is asked when the link was a search (Google), never guessed.
+      done.addEventListener("click", () => {
+        done.disabled = true; later.disabled = true;
+        const host = (() => { try { return new URL(url || "").hostname.replace(/^www\./, ""); } catch (_) { return ""; } })();
+        const seller = /(^|\.)google\./.test(host) || !host ? "" : (SELLER_NAME[host] || host);
+        const [d1, d2] = bookingDates(p, leg);
+        const vendor = el("input", { name: "vendor", maxlength: "80", required: "", value: seller, placeholder: p.by === "air" ? "the airline you booked with" : p.by === "stay" ? "the hotel, or the site you booked on" : "who you booked with" });
+        const amount = el("input", { type: "number", name: "amount", min: "0", step: "0.01", inputmode: "decimal", placeholder: "optional" });
+        const cur = el("input", { name: "currency", maxlength: "3", value: "USD", autocapitalize: "characters" });
+        const save = el("button", { type: "submit", class: "chip yes" }, "Save booking");
+        const form = el("form", { class: "booked-form stack", autocomplete: "off" },
+          el("div", { class: "row" }, el("label", { class: "field" }, "Booked with", vendor), el("label", { class: "field" }, "Amount", amount), el("label", { class: "field" }, "Currency", cur)),
+          el("p", { class: "muted small" }, (d1 ? fmtDate(d1) + (d2 && d2 !== d1 ? " to " + fmtDate(d2) : "") + ". " : "") + "Leave out booking references and ticket numbers: they stay in the seller's email."),
+          el("div", { class: "chips" }, save, later));
+        later.disabled = false;
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const v = vendor.value.trim(), a = amount.value.trim() === "" ? null : Number(amount.value), c = a === null ? null : (cur.value.trim().toUpperCase() || null);
+          if (!v) { vendor.focus(); return; }
+          if (a !== null && (!c || !/^[A-Z]{3}$/.test(c))) { note.textContent = "Currency is a three-letter code, like USD or EUR."; return; }
+          const nk = neverKept(v); if (nk) { note.textContent = "Not saved: this looks like " + nk + ", which the pilot never keeps."; return; }
+          save.disabled = true;
+          const r = await sb.from("bookings").insert({ trip_id: current.id, kind: LEG_KIND[p.by] || "other", vendor: v, title: String(p.leg).slice(0, 120), date_from: d1 || null, date_to: d2 || null, amount: a, currency: c, status: "booked" });
+          if (r.error) { save.disabled = false; note.textContent = explain(r.error); return; }
+          lockAll(); save.disabled = true;
+          finish("I've booked " + p.leg + " with " + v + ".");
+          paintBookings(); dotTab("trip");
+        });
+        after.replaceWith(form); vendor.value ? amount.focus() : vendor.focus();
       });
       later.addEventListener("click", () => { lockAll(); finish("I've started booking " + p.leg + "; I'll confirm later."); });
       no.addEventListener("click", () => { lockAll(); finish("Not " + p.leg + " for now."); });
