@@ -408,7 +408,7 @@
     box.replaceChildren(el("h3", {}, "Bookings"));
     if (error) { box.append(el("p", { class: "muted small" }, missingTable(error) ? "Bookings come here once the next version of the notice is approved: vendor, dates, amount and status, never booking references or ticket numbers." : explain(error))); return; }
     const rows = data || [];
-    markBookedLegs(new Set(rows.filter((b) => b.status !== "cancelled").map((b) => String(b.title || "").trim().toLowerCase())));
+    markBookedLegs(new Set(rows.filter((b) => b.status !== "cancelled").flatMap((b) => String(b.title || "").split(" + ").map((t) => t.trim().toLowerCase()))));
     const ul = el("ul", { class: "list bookings" });
     for (const b of rows) {
       const when = [b.date_from && fmtDate(b.date_from), b.date_to && b.date_to !== b.date_from && fmtDate(b.date_to)].filter(Boolean).join(" – ");
@@ -488,6 +488,23 @@
   }
   const partyNow = () => { const bp = (current && briefs[current.id] || {}).payload || {}; return 1 + (Array.isArray(bp.who) ? bp.who.length : 0); };
   const fitted = (url, g) => fitLink(url, g, partyNow(), current && current.date_from);
+// Multi-city flights on one ticket (his ask 16 Nov 22:56 ET): a Google Flights link with every flight of the option as
+  // one multi-city search, for the party, so the price is for the whole trip and the airlines' partner networks can be
+  // compared against separate one-ways. Built from each flight part's air field ({from, to, date}: airport or city codes
+  // and YYYY-MM-DD); checked by hand 16 Nov (New York to London, Amsterdam to New York, 2 adults: Google showed it as
+  // multi-city, priced for the entire trip).
+  function multiCityLink(airs, party) {
+    const ok = (a) => a && /^[A-Z]{3}$/.test(a.from) && /^[A-Z]{3}$/.test(a.to) && /^\d{4}-\d{2}-\d{2}$/.test(a.date);
+    if (!Array.isArray(airs) || airs.length < 2 || airs.length > 6 || !airs.every(ok)) return null;
+    const vint = (n) => { const o = []; while (n > 127) { o.push((n & 127) | 128); n >>>= 7; } o.push(n); return o; };
+    const ld = (f, b) => [...vint((f << 3) | 2), ...vint(b.length), ...b], vi = (f, n) => [...vint(f << 3), ...vint(n)];
+    const str = (s) => Array.from(new TextEncoder().encode(s));
+    const leg = (a) => [...ld(2, str(a.date)), ...ld(13, ld(2, str(a.from))), ...ld(14, ld(2, str(a.to)))];
+    const n = Number.isInteger(party) && party > 0 && party < 10 ? party : 1;
+    const bytes = [...airs.flatMap((a) => ld(3, leg(a))), ...Array.from({ length: n }, () => vi(8, 1)).flat(), ...vi(9, 1), ...vi(19, 3)];
+    const b64 = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return "https://www.google.com/travel/flights/search?tfs=" + b64 + "&hl=en";
+  }
   async function prefillBooking(g) {
     showTab("wallet"); await paintBookings();
     const f = document.querySelector("#wallet-bookings form.book-add"); if (!f) return;
@@ -501,7 +518,7 @@
   // A leg shows Booked once a booking on the trip carries its title (added from the leg, or typed the same).
   function markBookedLegs(titles) {
     for (const li of document.querySelectorAll("li[data-leg-title]")) {
-      const done = titles.has(li.dataset.legTitle.trim().toLowerCase());
+      const done = titles.has(li.dataset.legTitle.trim().toLowerCase());   // a booking titled "A + B" covers A and B (see markBooked)
       const m = li.querySelector(".booked-mark"), b = li.querySelector(".booked-btn"), pl = li.querySelector(".planned-mark"), sm = li.querySelector(".started-mark");
       const started = !done && startedLegs.has(li.dataset.legTitle.trim().toLowerCase());
       if (m) m.hidden = !done; if (b) b.hidden = done; if (pl) pl.hidden = done || started; if (sm) sm.hidden = !started;
@@ -1098,7 +1115,8 @@
     const o = opts.find((x) => foldName(x.name) === foldName(name));
     if (!o) return { error: { message: "that option isn't on the plan any more" }, said: "" };
     const legs = (Array.isArray(o.legs) ? o.legs : []).slice(0, 40).map((g) => ({ title: String(g.title || "").slice(0, 120), by: String(g.by || ""), day: Number.isInteger(g.day) ? g.day : null,
-      book: g.book && safeLink(g.book.url) ? { url: safeLink(g.book.url), label: String(g.book.label || "").slice(0, 80) } : null }));
+      book: g.book && safeLink(g.book.url) ? { url: safeLink(g.book.url), label: String(g.book.label || "").slice(0, 80) } : null,
+      ...(g.air && /^[A-Z]{3}$/.test(g.air.from) && /^[A-Z]{3}$/.test(g.air.to) && /^\d{4}-\d{2}-\d{2}$/.test(g.air.date) ? { air: { from: g.air.from, to: g.air.to, date: g.air.date } } : {}) }));
     const payload = { v: 1, type: "pick", topic: PICK_TOPIC, chosen: String(o.name || "").slice(0, 80), option_id: o.id ? String(o.id).slice(0, 4) : null, legs, by: "steward", decided_at: new Date().toISOString() };
     const { error } = await sb.from("trip_items").insert({ trip_id: current.id, kind: "decision", payload });
     if (!error) { await loadItems(); dotTab("trip"); }
@@ -1128,6 +1146,10 @@
     if (box.hidden) return;
     box.append(el("h3", {}, "Itinerary"), el("p", { class: "muted small" }, (pick ? pick.chosen + (pick.decided_at ? ", picked " + fmtDate(String(pick.decided_at).slice(0, 10)) : "") + ". " : "") + "Each part is Tentative until its booking is on the trip; nothing is booked for you."));
     if (!legs.length) { box.append(el("p", { class: "muted small" }, "This option has no parts listed yet.")); return; }
+    // Both flights on one ticket (his ask 16 Nov 22:56 ET): one multi-city search when the option has two or more flights.
+    const airs = base.filter((g) => g.by === "air" && g.air);
+    const mc = airs.length >= 2 ? multiCityLink(airs.map((g) => g.air), partyNow()) : null;
+    if (mc) { const a = extLink(mc, "Compare both flights on one ticket (Google Flights)", "book"); if (a.dataset) a.dataset.leg = airs.map((g) => g.title).join(" + "); box.append(el("p", { class: "small" }, a)); }
     const ul = el("ol", { class: "legs itin" });
     for (const g of legs) {
       const d = legDate(g);
@@ -1163,7 +1185,7 @@
     currentPlanAt = planItem ? planItem.created_at : null;
     renderPlan(currentPlan); paintWork(); paintStale();
     const pickRow = notes.filter((i) => i.kind === "decision" && i.payload && i.payload.type === "pick").pop();
-    startedLegs = new Set(notes.filter((i) => i.kind === "note" && i.payload && i.payload.type === "started").map((i) => String(i.payload.leg || "").trim().toLowerCase()));
+    startedLegs = new Set(notes.filter((i) => i.kind === "note" && i.payload && i.payload.type === "started").flatMap((i) => String(i.payload.leg || "").split(" + ").map((t) => t.trim().toLowerCase())));
     const itemRows = notes.filter((i) => i.kind === "decision" && i.payload && i.payload.type === "item" && i.payload.leg);
     paintItinerary(pickRow ? pickRow.payload : null, itemRows.map((i) => i.payload.leg));
     if (currentPlan || pickRow || itemRows.length) paintBookings();
