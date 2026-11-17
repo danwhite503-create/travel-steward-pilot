@@ -590,3 +590,5 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .itin .leg-top .tag{margin-right:.4em}
 .pick-row{margin-top:.75rem;display:flex;flex-wrap:wrap;align-items:center;gap:.5rem}
 .share-prompt .chip{margin-left:.4em}
+/* Book card in the chat (his test 16 Nov 22:01 ET): the seller's link reads as a chip. */
+.chips a.book-link{text-decoration:none;display:inline-flex;align-items:center}

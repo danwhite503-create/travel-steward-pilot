@@ -917,12 +917,13 @@
     const p = m.payload || {}, mine = current && user && current.owner === user.id;
     const T = window.TravelTeam, tm = T && T.TEAM.find((x) => x.key === ((p.type === "choice" && p.by) || m.agent || "steward"));   // a choice is Arlo's card in the store, asked by p.by
     const who = tm ? tm.name + " · " + (tm.key === "steward" ? "Steward" : tm.role) : "Arlo · Steward";
-    const badge = p.type === "choice" || p.type === "pick" ? "to decide" : p.type === "share" ? "to send" : p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save";
+    const badge = p.type === "choice" || p.type === "pick" ? "to decide" : p.type === "share" ? "to send" : p.type === "book" ? "to book" : p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save";
     const li = el("li", { class: "msg agent proposal" + (p.type === "choice" ? " choice" : "") }, el("div", { class: "msg-who" }, who + " ", el("span", { class: "badge-prop" }, badge)), el("div", { class: "msg-body" }, m.body));
     if (p.type === "choice") li.append(el("ol", { class: "choice-opts" }, ...(p.options || []).map((o) => el("li", {}, el("strong", {}, o.label), " ", el("span", { class: "muted" }, o.tradeoff)))),
       el("p", { class: "muted small" }, "General, not yet checked. Choosing sets the direction; nothing is booked."));
     if (p.type === "traveler") li.append(el("p", { class: "muted small" }, "Only add people who've agreed to be on the pilot, as the notice asks."));
     if (p.type === "pick") li.append(el("p", { class: "muted small" }, "Nothing is booked. Each part shows Planned on the itinerary until its booking is on the trip."));
+    if (p.type === "book") li.append(el("p", { class: "muted small" }, "Nothing is booked for you: you book and pay on the seller's page. The part shows Booked once the booking is on the trip."));
     if (p.type === "share") li.append(el("p", { class: "muted small" }, "The planner reads the trip in the store and every read is logged on the Trip tab. You can stop sharing there any time."));
     if (cardDone.has(m.id)) { li.classList.add("done"); li.append(el("p", { class: "small card-done" }, cardDone.get(m.id))); return li; }
     if (!open || !mine || $("#talk-text").disabled) return li;
@@ -936,6 +937,20 @@
       sendTalk(group.join(" "));
     };
     const no = el("button", { type: "button", class: "chip" }, "Not now");
+    // Booking from the chat (his test 16 Nov 22:01 ET): the seller's link from the plan, then I've booked this, which fills
+    // the Wallet's booking form from the plan's part for him to check and save.
+    if (p.type === "book") {
+      const url = safeLink(p.url), done = el("button", { type: "button", class: "chip yes" }, "I've booked this");
+      const go = url ? extLink(url, p.label || "Book on the seller's site", "chip book-link") : "";
+      done.addEventListener("click", async () => {
+        done.disabled = true; no.disabled = true;
+        finish("I've booked " + p.leg + ".");
+        await prefillBooking({ title: p.leg, by: p.by, day: Number.isInteger(p.day) ? p.day : null, book: { url: url || "" } });
+      });
+      no.addEventListener("click", () => { done.disabled = true; no.disabled = true; finish("Not booking " + p.leg + " yet."); });
+      li.append(el("div", { class: "chips" }, go, done, no));
+      return li;
+    }
     const picks = p.type === "choice" ? (p.options || []).map((o, i) => el("button", { type: "button", class: "chip yes", "data-opt": String(i + 1) }, o.label))
       : [el("button", { type: "button", class: "chip yes" }, p.type === "traveler" ? (p.on_trip === false ? "Save" : "Add to trip") : p.type === "share" ? "Send to the team" : p.type === "pick" ? "Go with it" : "Save")];
     const all = [...picks, no], lock = (v) => all.forEach((b) => { b.disabled = v; });
