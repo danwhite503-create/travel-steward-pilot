@@ -592,3 +592,6 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .share-prompt .chip{margin-left:.4em}
 /* Book card in the chat (his test 16 Nov 22:01 ET): the seller's link reads as a chip. */
 .chips a.book-link{text-decoration:none;display:inline-flex;align-items:center}
+/* Booking started (his ask 16 Nov 22:21 ET): a Book link was tapped; Booked once the booking is on the trip. */
+.leg-foot .started-mark{font-size:var(--step--1);font-weight:600;color:var(--warn, #8a5a00)}
+.leg-foot .started-mark::before{content:"\25D0 "}

@@ -471,8 +471,9 @@
   function markBookedLegs(titles) {
     for (const li of document.querySelectorAll("li[data-leg-title]")) {
       const done = titles.has(li.dataset.legTitle.trim().toLowerCase());
-      const m = li.querySelector(".booked-mark"), b = li.querySelector(".booked-btn"), pl = li.querySelector(".planned-mark");
-      if (m) m.hidden = !done; if (b) b.hidden = done; if (pl) pl.hidden = done;
+      const m = li.querySelector(".booked-mark"), b = li.querySelector(".booked-btn"), pl = li.querySelector(".planned-mark"), sm = li.querySelector(".started-mark");
+      const started = !done && startedLegs.has(li.dataset.legTitle.trim().toLowerCase());
+      if (m) m.hidden = !done; if (b) b.hidden = done; if (pl) pl.hidden = done || started; if (sm) sm.hidden = !started;
     }
   }
   async function paintPoints() {
@@ -942,6 +943,7 @@
     if (p.type === "book") {
       const url = safeLink(p.url), done = el("button", { type: "button", class: "chip yes" }, "I've booked this");
       const go = url ? extLink(url, p.label || "Book on the seller's site", "chip book-link") : "";
+      if (go && go.dataset) go.dataset.leg = p.leg;
       done.addEventListener("click", async () => {
         done.disabled = true; no.disabled = true;
         finish("I've booked " + p.leg + ".");
@@ -1066,12 +1068,23 @@
       const d = legDate(g);
       ul.append(el("li", { "data-leg-title": g.title }, el("div", { class: "leg-body" },
         el("div", { class: "leg-top" }, el("span", { class: "tag" }, LEG_TAG[g.by] || "Other"), g.day ? el("span", { class: "day" }, "Day " + g.day + (d ? " · " + fmtDate(d) : "")) : "", el("span", { class: "leg-title" }, g.title)),
-        el("div", { class: "leg-foot" }, el("span", { class: "planned-mark" }, "Planned"), el("span", { class: "booked-mark", hidden: "" }, "Booked"),
+        el("div", { class: "leg-foot" }, el("span", { class: "planned-mark" }, "Planned"), el("span", { class: "started-mark", hidden: "" }, "Booking started"), el("span", { class: "booked-mark", hidden: "" }, "Booked"),
           g.book && g.book.url ? extLink(g.book.url, g.book.label || "Book on the seller's site", "book") : "",
           g.book && g.book.url && tripCanWrite ? el("button", { type: "button", class: "link booked-btn", onclick: () => prefillBooking(g) }, "I've booked this") : ""))));
     }
     box.append(ul);
   }
+  // Click-through (his ask 16 Nov 22:21 ET): tapping a Book link records "Booking started" on that part, once, as a trip
+  // note; the itinerary shows it and Arlo asks whether the booking went through. Nothing about the purchase is recorded.
+  let startedLegs = new Set();
+  document.addEventListener("click", async (e) => {
+    const a = e.target && e.target.closest ? e.target.closest("a.book, a.book-link") : null; if (!a || !current || !tripCanWrite) return;
+    const host = a.closest("[data-leg-title]"), leg = String(a.dataset.leg || (host && host.dataset.legTitle) || "").trim().slice(0, 120);
+    if (!leg || startedLegs.has(leg.toLowerCase())) return;
+    startedLegs.add(leg.toLowerCase());
+    const { error } = await sb.from("trip_items").insert({ trip_id: current.id, kind: "note", payload: { v: 1, type: "started", leg, at: new Date().toISOString() } });
+    if (error) startedLegs.delete(leg.toLowerCase()); else paintBookings();
+  });
   async function loadItems() {
     const { data, error } = await sb.from("trip_items").select("id, kind, payload, created_by, created_at, updated_at").eq("trip_id", current.id).order("created_at");
     if (error) return flash(explain(error), "bad");
@@ -1085,11 +1098,13 @@
     currentPlanAt = planItem ? planItem.created_at : null;
     renderPlan(currentPlan); paintWork(); paintStale();
     const pickRow = notes.filter((i) => i.kind === "decision" && i.payload && i.payload.type === "pick").pop();
+    startedLegs = new Set(notes.filter((i) => i.kind === "note" && i.payload && i.payload.type === "started").map((i) => String(i.payload.leg || "").trim().toLowerCase()));
     paintItinerary(pickRow ? pickRow.payload : null);
     if (currentPlan || pickRow) paintBookings();
     // With a plan on the trip, the brief folds under its heading; without one, it stays open.
     $("#brief-wrap").open = !planItem;
     for (const i of notes) {
+      if (i.kind === "note" && i.payload && i.payload.type === "started") continue;   // shown on the itinerary, not as a note
       if (i.kind === "decision" && i.payload && i.payload.topic && lastDec.get(i.payload.topic) !== i.id) continue;
       const tmd = i.kind === "decision" && window.TravelTeam && window.TravelTeam.TEAM.find((x) => x.key === i.payload.by);
       const chk = i.kind === "note" && i.payload && i.payload.type === "check";
