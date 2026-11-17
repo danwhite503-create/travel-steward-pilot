@@ -347,6 +347,18 @@
       else if (n.id === "packing") P.suitcase.append(n);
       else P.trip.append(n);
     }
+    // The Trip tab as a summary (his choice 16 Nov 23:30 ET, "Summary first"): the trip at a glance, the map, the itinerary
+    // by day, the team at work; the plan's options and the brief, notes and sharing folded below. Changes go through the chat.
+    {
+      const kids = [...P.trip.children], byId = (id) => kids.find((n) => n.id === id);
+      const itin = byId("itinerary"), work = byId("work"), plan = byId("plan");
+      const rest = kids.filter((n) => n !== itin && n !== work && n !== plan);
+      const fold = (id, label, nodes) => { const d = el("details", { class: "panel fold", id }, el("summary", {}, label)); d.append(...nodes); return d; };
+      P.trip.replaceChildren(el("section", { id: "trip-summary", class: "panel summary", "aria-label": "Trip summary" }),
+        el("section", { id: "trip-map-wrap", class: "panel map-wrap", hidden: "", "aria-label": "Map" }, el("h3", {}, "Map"), el("div", { id: "trip-map", class: "trip-map" }),
+          el("p", { class: "muted small", id: "trip-map-note" })),
+        itin, work, fold("plan-fold", "Plan options", [plan]), fold("trip-more", "Brief, notes and sharing", rest));
+    }
     P.wallet.append(el("section", { class: "panel", id: "wallet-people", "aria-label": "Passports" }),
       el("section", { class: "panel", id: "wallet-bookings", "aria-label": "Bookings" }),
       el("section", { class: "panel", id: "wallet-points", "aria-label": "Your points" }));
@@ -366,6 +378,7 @@
       const b = $("#tab-" + t); b.setAttribute("aria-selected", on ? "true" : "false"); b.setAttribute("tabindex", on ? "0" : "-1"); b.classList.toggle("on", on);
       if (on) b.querySelector(".tab-dot").hidden = true;
     }
+    if (k === "trip" && tripMap) setTimeout(() => { try { tripMap.invalidateSize(); fitMap(); } catch (_) { /* map not ready */ } }, 50);
   }
   function dotTab(k) { if (tabsOn && !$("#tab-" + k).classList.contains("on")) $("#tab-" + k + " .tab-dot").hidden = false; }
   // Who's speaking: the last team voice comes forward; while a message is out, Arlo is "thinking".
@@ -532,6 +545,7 @@
       const started = !done && startedLegs.has(li.dataset.legTitle.trim().toLowerCase());
       if (m) m.hidden = !done; if (b) b.hidden = done; if (pl) pl.hidden = done || started; if (sm) sm.hidden = !started;
     }
+    bookedTitles = titles; paintMap(); paintSummary();
   }
   async function paintPoints() {
     const box = $("#wallet-points"); if (!box) return;
@@ -1152,7 +1166,8 @@
     if (!o) return { error: { message: "that option isn't on the plan any more" }, said: "" };
     const legs = (Array.isArray(o.legs) ? o.legs : []).slice(0, 40).map((g) => ({ title: String(g.title || "").slice(0, 120), by: String(g.by || ""), day: Number.isInteger(g.day) ? g.day : null,
       book: g.book && safeLink(g.book.url) ? { url: safeLink(g.book.url), label: String(g.book.label || "").slice(0, 80) } : null,
-      ...(g.air && /^[A-Z]{3}$/.test(g.air.from) && /^[A-Z]{3}$/.test(g.air.to) && /^\d{4}-\d{2}-\d{2}$/.test(g.air.date) ? { air: { from: g.air.from, to: g.air.to, date: g.air.date } } : {}) }));
+      ...(g.air && /^[A-Z]{3}$/.test(g.air.from) && /^[A-Z]{3}$/.test(g.air.to) && /^\d{4}-\d{2}-\d{2}$/.test(g.air.date) ? { air: { from: g.air.from, to: g.air.to, date: g.air.date } } : {}),
+      ...(Array.isArray(g.places) && g.places.some(okPlace) ? { places: g.places.filter(okPlace).slice(0, 2).map((p) => ({ name: String(p.name).slice(0, 80), lat: p.lat, lng: p.lng })) } : {}) }));
     const payload = { v: 1, type: "pick", topic: PICK_TOPIC, chosen: String(o.name || "").slice(0, 80), option_id: o.id ? String(o.id).slice(0, 4) : null, legs, by: "steward", decided_at: new Date().toISOString() };
     const { error } = await sb.from("trip_items").insert({ trip_id: current.id, kind: "decision", payload });
     if (!error) { await loadItems(); dotTab("trip"); }
@@ -1170,6 +1185,66 @@
     return { error };
   }
   let itineraryTitles = new Set();
+  // The map (his ask 16 Nov 23:30 ET): OpenStreetMap through the vendored Leaflet, no key and no tracking script; each pin
+  // opens the place in Apple Maps (his preference: Apple Maps; an Apple map on the page needs a MapKit JS token from his
+  // Apple developer account, so it waits for that). Places come from the plan's parts (places: [{name, lat, lng}], the
+  // planning team's coordinates); a part without them isn't pinned. Pins: hollow = tentative, filled = booked.
+  let tripMap = null, mapLayer = null, mapLegs = [], bookedTitles = new Set();
+  function planMapLegs() { const o = currentPlan && Array.isArray(currentPlan.options) ? currentPlan.options[0] : null; return o && Array.isArray(o.legs) ? o.legs : []; }
+  const okPlace = (p) => p && typeof p.name === "string" && Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180;
+  function fitMap() {
+    if (!tripMap || !mapLayer) return;
+    const b = mapLayer.getBounds(); if (b.isValid()) tripMap.fitBounds(b, { padding: [24, 24], maxZoom: 12 });
+  }
+  function paintMap() {
+    const wrap = $("#trip-map-wrap"); if (!wrap || !window.L) return;
+    const pts = []; const lines = [];
+    for (const g of mapLegs || []) {
+      const ps = (Array.isArray(g.places) ? g.places : []).filter(okPlace); if (!ps.length) continue;
+      const booked = bookedTitles.has(String(g.title || "").trim().toLowerCase());
+      for (const p of ps) pts.push({ p, g, booked });
+      if (ps.length >= 2) lines.push({ a: ps[0], b: ps[ps.length - 1], booked, by: g.by });
+    }
+    wrap.hidden = !pts.length; if (!pts.length) return;
+    if (!tripMap) {
+      tripMap = window.L.map("trip-map", { scrollWheelZoom: false, attributionControl: true });
+      window.L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, referrerPolicy: "strict-origin-when-cross-origin",
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors' }).addTo(tripMap);
+    }
+    if (mapLayer) mapLayer.remove();
+    mapLayer = window.L.featureGroup().addTo(tripMap);
+    for (const l of lines) window.L.polyline([[l.a.lat, l.a.lng], [l.b.lat, l.b.lng]], { color: l.by === "air" ? "#7a7a7a" : "#2f6f4e", weight: 3, dashArray: l.booked ? null : "6 6", opacity: 0.9 }).addTo(mapLayer);
+    const seen = new Map();
+    for (const x of pts) { const k = x.p.name + "|" + x.p.lat.toFixed(3) + "|" + x.p.lng.toFixed(3); if (!seen.has(k)) seen.set(k, []); seen.get(k).push(x); }
+    for (const [, xs] of seen) {
+      const p = xs[0].p, booked = xs.every((x) => x.booked);
+      const pop = el("div", { class: "map-pop" }, el("strong", {}, p.name), ...xs.map((x) => el("div", { class: "small" }, x.g.title + " · " + (x.booked ? "Booked" : "Tentative"))),
+        extLink("https://maps.apple.com/?ll=" + p.lat + "," + p.lng + "&q=" + encodeURIComponent(p.name), "Open in Apple Maps", "small"));
+      window.L.circleMarker([p.lat, p.lng], { radius: 8, color: "#1d3b2c", weight: 2, fillColor: "#2f6f4e", fillOpacity: booked ? 0.95 : 0.1 }).bindPopup(pop).addTo(mapLayer);
+    }
+    $("#trip-map-note").textContent = "Filled pins are booked; hollow ones tentative. Map data from OpenStreetMap; tap a pin to open it in Apple Maps.";
+    if (!$("#panel-trip") || !$("#panel-trip").hidden) fitMap();
+  }
+  // The trip at a glance (his choice 16 Nov 23:30 ET): dates, who's going, where the bookings stand, the planning team.
+  function paintSummary() {
+    const box = $("#trip-summary"); if (!box || !current) return;
+    const bp = (briefs[current.id] || {}).payload || {};
+    const titles = [...itineraryTitles];
+    const nBooked = titles.filter((t) => bookedTitles.has(t)).length, nStarted = titles.filter((t) => !bookedTitles.has(t) && startedLegs.has(t)).length;
+    const nTent = titles.length - nBooked - nStarted;
+    const party = partyNow();
+    const dates = current.date_from ? fmtDate(current.date_from) + (current.date_to ? " to " + fmtDate(current.date_to) : ", return open") : "Dates not set";
+    const ask = el("button", { type: "button", class: "secondary small" }, "Ask the team to change something");
+    ask.addEventListener("click", () => { showTab("chat"); const t = $("#talk-text"); if (!t.disabled) { t.value = t.value || "Arlo, "; t.focus(); } });
+    box.replaceChildren(el("h3", {}, "At a glance"),
+      el("dl", { class: "glance" },
+        el("dt", {}, "When"), el("dd", {}, dates),
+        el("dt", {}, "Who"), el("dd", {}, party === 1 ? "You" : "You and " + (party - 1) + " more"),
+        el("dt", {}, "Where"), el("dd", {}, Array.isArray(bp.places) && bp.places.length ? bp.places.join(" → ") : "Not set yet"),
+        el("dt", {}, "Bookings"), el("dd", {}, titles.length ? [nBooked + " booked", nStarted ? nStarted + " started" : "", nTent + " tentative"].filter(Boolean).join(" · ") : "Nothing picked yet"),
+        el("dt", {}, "Planning team"), el("dd", {}, shareLive ? "Has the trip" : "Not sent yet")),
+      ask);
+  }
   const LEG_TAG = { rail: "Train", air: "Flight", stay: "Stay", dining: "Table", events: "Event", around: "Around" };
   function paintItinerary(pick, items) {
     const box = $("#itinerary"); if (!box) return; box.replaceChildren();
@@ -1178,7 +1253,9 @@
     const legs = [...base, ...extra.map((g) => ({ ...g, unchecked: true }))].map((g, i) => [g, i])
       .sort((a, b) => ((a[0].day == null ? 0 : a[0].day) - (b[0].day == null ? 0 : b[0].day)) || (a[1] - b[1])).map((x) => x[0]);
     itineraryTitles = new Set(legs.map((g) => String(g.title).toLowerCase()));
+    mapLegs = legs.length ? legs : planMapLegs();
     box.hidden = !pick && !extra.length;
+    paintMap(); paintSummary();
     if (box.hidden) return;
     box.append(el("h3", {}, "Itinerary"), el("p", { class: "muted small" }, (pick ? pick.chosen + (pick.decided_at ? ", picked " + fmtDate(String(pick.decided_at).slice(0, 10)) : "") + ". " : "") + "Each part is Tentative until its booking is on the trip; nothing is booked for you."));
     if (!legs.length) { box.append(el("p", { class: "muted small" }, "This option has no parts listed yet.")); return; }
@@ -1189,7 +1266,7 @@
     const ul = el("ol", { class: "legs itin" });
     for (const g of legs) {
       const d = legDate(g);
-      ul.append(el("li", { "data-leg-title": g.title }, el("div", { class: "leg-body" },
+      ul.append(el("li", { "data-leg-title": g.title }, face(SPECIALIST[g.by] || "steward", "leg-face"), el("div", { class: "leg-body" },   // the plan's grid: face, then the part (phone check 16 Nov)
         el("div", { class: "leg-top" }, el("span", { class: "tag" }, LEG_TAG[g.by] || "Other"), g.day ? el("span", { class: "day" }, "Day " + g.day + (d ? " · " + fmtDate(d) : "")) : "", el("span", { class: "leg-title" }, g.title), g.unchecked ? el("span", { class: "muted small" }, " · not yet checked") : ""),
         el("div", { class: "leg-foot" }, el("span", { class: "planned-mark" }, "Tentative"), el("span", { class: "started-mark", hidden: "" }, "Booking started"), el("span", { class: "booked-mark", hidden: "" }, "Booked"),
           g.book && g.book.url ? extLink(fitted(g.book.url, g), g.book.label || "Book on the seller's site", "book") : "",
@@ -1220,6 +1297,9 @@
     currentPlan = planItem ? planItem.payload || {} : null;
     currentPlanAt = planItem ? planItem.created_at : null;
     renderPlan(currentPlan); paintWork(); paintStale();
+    // The plan's options open until one is picked, then fold; only when that changes, so a fold he opened stays open.
+    const pf = $("#plan-fold"), hasPick = notes.some((i) => i.kind === "decision" && i.payload && i.payload.type === "pick");
+    if (pf) { pf.hidden = !currentPlan; if (pf.dataset.picked !== String(hasPick)) { pf.dataset.picked = String(hasPick); pf.open = !!currentPlan && !hasPick; } }
     const pickRow = notes.filter((i) => i.kind === "decision" && i.payload && i.payload.type === "pick").pop();
     startedLegs = new Set(notes.filter((i) => i.kind === "note" && i.payload && i.payload.type === "started").flatMap((i) => String(i.payload.leg || "").split(" + ").map((t) => t.trim().toLowerCase())));
     const itemRows = notes.filter((i) => i.kind === "decision" && i.payload && i.payload.type === "item" && i.payload.leg);

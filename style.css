@@ -595,3 +595,11 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 /* Booking started (his ask 16 Nov 22:21 ET): a Book link was tapped; Booked once the booking is on the trip. */
 .leg-foot .started-mark{font-size:var(--step--1);font-weight:600;color:var(--warn, #8a5a00)}
 .leg-foot .started-mark::before{content:"\25D0 "}
+/* Trip tab as a summary, with a map (his choice 16 Nov 23:30 ET). */
+.summary .glance{display:grid;grid-template-columns:max-content 1fr;gap:.25rem 1rem;margin:.5rem 0 1rem}
+.summary .glance dt{font-weight:600}
+.summary .glance dd{margin:0}
+.trip-map{height:280px;border-radius:8px;overflow:hidden;background:#e8e8e3}
+.map-pop .small{font-size:.85em;margin-top:.15rem}
+details.fold>summary{cursor:pointer;font-weight:600;padding:.25rem 0}
+details.fold[open]>summary{margin-bottom:.5rem}
