@@ -923,8 +923,8 @@
     if (p.type === "choice") li.append(el("ol", { class: "choice-opts" }, ...(p.options || []).map((o) => el("li", {}, el("strong", {}, o.label), " ", el("span", { class: "muted" }, o.tradeoff)))),
       el("p", { class: "muted small" }, "General, not yet checked. Choosing sets the direction; nothing is booked."));
     if (p.type === "traveler") li.append(el("p", { class: "muted small" }, "Only add people who've agreed to be on the pilot, as the notice asks."));
-    if (p.type === "pick") li.append(el("p", { class: "muted small" }, "Nothing is booked. Each part shows Planned on the itinerary until its booking is on the trip."));
-    if (p.type === "book") li.append(el("p", { class: "muted small" }, "Nothing is booked for you: you book and pay on the seller's page. The part shows Booked once the booking is on the trip."));
+    if (p.type === "pick") li.append(el("p", { class: "muted small" }, "Nothing is booked. Each part shows Tentative on the itinerary until its booking is on the trip."));
+    if (p.type === "book") li.append(el("p", { class: "muted small" }, "Nothing is booked for you: you book and pay on the seller's page. It shows Tentative on the itinerary until the booking is on the trip."));
     if (p.type === "share") li.append(el("p", { class: "muted small" }, "The planner reads the trip in the store and every read is logged on the Trip tab. You can stop sharing there any time."));
     if (cardDone.has(m.id)) { li.classList.add("done"); li.append(el("p", { class: "small card-done" }, cardDone.get(m.id))); return li; }
     if (!open || !mine || $("#talk-text").disabled) return li;
@@ -940,17 +940,35 @@
     const no = el("button", { type: "button", class: "chip" }, "Not now");
     // Booking from the chat (his test 16 Nov 22:01 ET): the seller's link from the plan, then I've booked this, which fills
     // the Wallet's booking form from the plan's part for him to check and save.
+    // Two ways forward for each item (his ask 16 Nov 22:28 ET): add it to the trip as Tentative, or book it now on the
+    // seller's page and then confirm (I've booked this) or confirm later. A plan part is already on the itinerary once the
+    // option is picked; an item the team suggested goes on it when added, marked not yet checked.
     if (p.type === "book") {
-      const url = safeLink(p.url), done = el("button", { type: "button", class: "chip yes" }, "I've booked this");
-      const go = url ? extLink(url, p.label || "Book on the seller's site", "chip book-link") : "";
+      const url = safeLink(p.url), fromPlan = p.from !== "team";
+      const leg = { title: p.leg, by: p.by, day: Number.isInteger(p.day) ? p.day : null, book: url ? { url, label: p.label || "" } : null };
+      const add = el("button", { type: "button", class: "chip" }, fromPlan ? "Book later" : "Add to trip");
+      const go = url ? extLink(url, "Book now", "chip yes book-link") : "";
       if (go && go.dataset) go.dataset.leg = p.leg;
-      done.addEventListener("click", async () => {
-        done.disabled = true; no.disabled = true;
-        finish("I've booked " + p.leg + ".");
-        await prefillBooking({ title: p.leg, by: p.by, day: Number.isInteger(p.day) ? p.day : null, book: { url: url || "" } });
+      const done = el("button", { type: "button", class: "chip yes" }, "I've booked this");
+      const later = el("button", { type: "button", class: "chip" }, "Confirm later");
+      const row = el("div", { class: "chips" }, add, go, no), after = el("div", { class: "chips" }, done, later);
+      const lockAll = () => [add, no, done, later].forEach((b) => { b.disabled = true; });
+      add.addEventListener("click", async () => {
+        lockAll();
+        if (!fromPlan) { const r = await addItem(leg); if (r.error) { [add, no].forEach((b) => { b.disabled = false; }); note.textContent = explain(r.error); return; } }
+        finish(fromPlan ? "I'll book " + p.leg + " later." : "Add " + p.leg + " to the trip; I'll book it later.");
       });
-      no.addEventListener("click", () => { done.disabled = true; no.disabled = true; finish("Not booking " + p.leg + " yet."); });
-      li.append(el("div", { class: "chips" }, go, done, no));
+      if (go) go.addEventListener("click", async () => {
+        if (!fromPlan) await addItem(leg);
+        row.replaceWith(after);
+      });
+      done.addEventListener("click", async () => {
+        lockAll(); finish("I've booked " + p.leg + ".");
+        await prefillBooking({ ...leg, book: { url: url || "" } });
+      });
+      later.addEventListener("click", () => { lockAll(); finish("I've started booking " + p.leg + "; I'll confirm later."); });
+      no.addEventListener("click", () => { lockAll(); finish("Not " + p.leg + " for now."); });
+      li.append(row);
       return li;
     }
     const picks = p.type === "choice" ? (p.options || []).map((o, i) => el("button", { type: "button", class: "chip yes", "data-opt": String(i + 1) }, o.label))
@@ -1026,7 +1044,7 @@
       await loadItems(); dotTab("trip");
       for (const x of st) {
         const undo = el("button", { type: "button", class: "link small" }, "Undo");
-        const line = el("span", { class: "settled-note" }, " Saved: " + (x.type === "pick" ? x.chosen + ", on the itinerary as Planned." : x.topic + ": " + x.chosen + "."), " ", undo);
+        const line = el("span", { class: "settled-note" }, " Saved: " + (x.type === "pick" ? x.chosen + ", on the itinerary as Tentative." : x.topic + ": " + x.chosen + "."), " ", undo);
         undo.addEventListener("click", async () => {
           undo.disabled = true;
           const r = await sb.from("trip_items").delete().eq("id", x.id);
@@ -1055,20 +1073,36 @@
     if (!error) { await loadItems(); dotTab("trip"); }
     return { error, said: "Go with " + payload.chosen + "." };
   }
+  // An item added from the chat (his ask 16 Nov 22:28 ET): a decision of type item, one per title, on the itinerary as
+  // Tentative beside the picked option's parts.
+  async function addItem(leg) {
+    const title = String(leg.title || "").slice(0, 120); if (!title) return { error: { message: "nothing to add" } };
+    if (itineraryTitles.has(title.toLowerCase())) return { error: null };
+    const payload = { v: 1, type: "item", topic: "Item: " + title.slice(0, 74), chosen: title, leg: { title, by: String(leg.by || ""), day: leg.day || null, book: leg.book && safeLink(leg.book.url) ? { url: safeLink(leg.book.url), label: String(leg.book.label || "").slice(0, 80) } : null },
+      checked: false, by: leg.by || "steward", decided_at: new Date().toISOString() };
+    const { error } = await sb.from("trip_items").insert({ trip_id: current.id, kind: "decision", payload });
+    if (!error) { itineraryTitles.add(title.toLowerCase()); await loadItems(); dotTab("trip"); }
+    return { error };
+  }
+  let itineraryTitles = new Set();
   const LEG_TAG = { rail: "Train", air: "Flight", stay: "Stay", dining: "Table", events: "Event", around: "Around" };
-  function paintItinerary(pick) {
+  function paintItinerary(pick, items) {
     const box = $("#itinerary"); if (!box) return; box.replaceChildren();
-    const legs = pick && Array.isArray(pick.legs) ? pick.legs : [];
-    box.hidden = !pick;
-    if (!pick) return;
-    box.append(el("h3", {}, "Itinerary"), el("p", { class: "muted small" }, pick.chosen + (pick.decided_at ? ", picked " + fmtDate(String(pick.decided_at).slice(0, 10)) : "") + ". Each part is Planned until its booking is on the trip; nothing is booked for you."));
+    const base = pick && Array.isArray(pick.legs) ? pick.legs : [];
+    const extra = (items || []).filter((g) => !base.some((b) => String(b.title).toLowerCase() === String(g.title).toLowerCase()));
+    const legs = [...base, ...extra.map((g) => ({ ...g, unchecked: true }))].map((g, i) => [g, i])
+      .sort((a, b) => ((a[0].day == null ? 0 : a[0].day) - (b[0].day == null ? 0 : b[0].day)) || (a[1] - b[1])).map((x) => x[0]);
+    itineraryTitles = new Set(legs.map((g) => String(g.title).toLowerCase()));
+    box.hidden = !pick && !extra.length;
+    if (box.hidden) return;
+    box.append(el("h3", {}, "Itinerary"), el("p", { class: "muted small" }, (pick ? pick.chosen + (pick.decided_at ? ", picked " + fmtDate(String(pick.decided_at).slice(0, 10)) : "") + ". " : "") + "Each part is Tentative until its booking is on the trip; nothing is booked for you."));
     if (!legs.length) { box.append(el("p", { class: "muted small" }, "This option has no parts listed yet.")); return; }
     const ul = el("ol", { class: "legs itin" });
     for (const g of legs) {
       const d = legDate(g);
       ul.append(el("li", { "data-leg-title": g.title }, el("div", { class: "leg-body" },
-        el("div", { class: "leg-top" }, el("span", { class: "tag" }, LEG_TAG[g.by] || "Other"), g.day ? el("span", { class: "day" }, "Day " + g.day + (d ? " · " + fmtDate(d) : "")) : "", el("span", { class: "leg-title" }, g.title)),
-        el("div", { class: "leg-foot" }, el("span", { class: "planned-mark" }, "Planned"), el("span", { class: "started-mark", hidden: "" }, "Booking started"), el("span", { class: "booked-mark", hidden: "" }, "Booked"),
+        el("div", { class: "leg-top" }, el("span", { class: "tag" }, LEG_TAG[g.by] || "Other"), g.day ? el("span", { class: "day" }, "Day " + g.day + (d ? " · " + fmtDate(d) : "")) : "", el("span", { class: "leg-title" }, g.title), g.unchecked ? el("span", { class: "muted small" }, " · not yet checked") : ""),
+        el("div", { class: "leg-foot" }, el("span", { class: "planned-mark" }, "Tentative"), el("span", { class: "started-mark", hidden: "" }, "Booking started"), el("span", { class: "booked-mark", hidden: "" }, "Booked"),
           g.book && g.book.url ? extLink(g.book.url, g.book.label || "Book on the seller's site", "book") : "",
           g.book && g.book.url && tripCanWrite ? el("button", { type: "button", class: "link booked-btn", onclick: () => prefillBooking(g) }, "I've booked this") : ""))));
     }
@@ -1099,8 +1133,9 @@
     renderPlan(currentPlan); paintWork(); paintStale();
     const pickRow = notes.filter((i) => i.kind === "decision" && i.payload && i.payload.type === "pick").pop();
     startedLegs = new Set(notes.filter((i) => i.kind === "note" && i.payload && i.payload.type === "started").map((i) => String(i.payload.leg || "").trim().toLowerCase()));
-    paintItinerary(pickRow ? pickRow.payload : null);
-    if (currentPlan || pickRow) paintBookings();
+    const itemRows = notes.filter((i) => i.kind === "decision" && i.payload && i.payload.type === "item" && i.payload.leg);
+    paintItinerary(pickRow ? pickRow.payload : null, itemRows.map((i) => i.payload.leg));
+    if (currentPlan || pickRow || itemRows.length) paintBookings();
     // With a plan on the trip, the brief folds under its heading; without one, it stays open.
     $("#brief-wrap").open = !planItem;
     for (const i of notes) {
@@ -1113,7 +1148,7 @@
           + (i.payload.status === "answered" ? " (answer in the chat)" : "")
         : i.kind === "decision" && i.payload && i.payload.topic ? i.payload.topic + ": " + i.payload.chosen + (tmd ? " (asked by " + tmd.name + ")" : "")
         : (i.payload && (i.payload.text || i.payload.t)) || JSON.stringify(i.payload);
-      const tag = chk ? (i.payload.status === "answered" ? "checked" : "checking") : i.kind === "decision" ? (i.payload && i.payload.type === "pick" ? "picked" : "direction") : i.kind;
+      const tag = chk ? (i.payload.status === "answered" ? "checked" : "checking") : i.kind === "decision" ? (i.payload && i.payload.type === "pick" ? "picked" : i.payload && i.payload.type === "item" ? "tentative" : "direction") : i.kind;
       const li = el("li", {}, el("span", { class: "tag" }, tag), el("span", { class: "grow" }, text));
       if (i.created_by === user.id || current.owner === user.id) li.append(" ", el("button", { type: "button", class: "link", onclick: async () => {
         if (!(await confirmBox("Delete this item?"))) return;
@@ -1427,9 +1462,9 @@
       go.addEventListener("click", async () => {
         go.disabled = true; const r = await pickOption(o.name);
         if (r.error) { go.disabled = false; flash(explain(r.error), "bad"); return; }
-        flash("On the itinerary as Planned. Nothing is booked.", "ok"); loadThread();
+        flash("On the itinerary as Tentative. Nothing is booked.", "ok"); loadThread();
       });
-      v.append(el("div", { class: "pick-row" }, go, el("span", { class: "muted small" }, " Puts its parts on the itinerary as Planned; you book each one on the seller's page.")));
+      v.append(el("div", { class: "pick-row" }, go, el("span", { class: "muted small" }, " Puts its parts on the itinerary as Tentative; you book each one on the seller's page.")));
     }
     return v;
   }
