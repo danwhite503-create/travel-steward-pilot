@@ -457,6 +457,37 @@
     if (!d0 || !Number.isInteger(day) || day < 1 || day > 60) return "";
     d0.setUTCDate(d0.getUTCDate() + day - 1); return d0.toISOString().slice(0, 10);
   }
+// Booking links fitted to the trip (his ask 16 Nov 22:44 ET): the party size, and for stays the nights, put into the
+  // seller's own link where it takes them (checked by hand 16 Nov: Eurostar's adult=, and Google's travel search reads
+  // dates and party from its query text; Google Hotels read the dates but kept 2 guests when asked for 3).
+  // party: people going (the traveler plus those ticked); dateFrom: the trip's first day (YYYY-MM-DD); g: the part.
+  function fitLink(url, g, party, dateFrom) {
+    let u; try { u = new URL(String(url)); } catch (_) { return url; }
+    if (u.protocol !== "https:") return url;
+    const n = Number.isInteger(party) && party > 0 && party < 10 ? party : 1, adults = n + (n === 1 ? " adult" : " adults");
+    const host = u.hostname.replace(/^www\./, "");
+    const dayDate = (d) => { if (!dateFrom || !Number.isInteger(d) || d < 1) return null; const t = new Date(dateFrom + "T00:00:00Z"); if (isNaN(t)) return null; t.setUTCDate(t.getUTCDate() + d - 1); return t; };
+    const words = (t) => t.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }).replace(",", "");
+    if (host === "eurostar.com" && u.pathname.startsWith("/search")) { u.searchParams.set("adult", String(n)); return u.href; }
+    if (host === "google.com" && u.pathname.startsWith("/travel/flights")) {
+      const q = u.searchParams.get("q"); if (q && !/adult/i.test(q)) u.searchParams.set("q", q + " for " + adults); return u.href;
+    }
+    if (host === "google.com" && (u.pathname.startsWith("/travel/hotels") || u.pathname.startsWith("/travel/search"))) {
+      const title = String((g && g.title) || ""), m = title.match(/^(.+?),\s*(\d+)\s+nights?$/i);
+      const fromPath = decodeURIComponent((u.pathname.match(/^\/travel\/hotels\/([^/]+)/) || [])[1] || "");
+      const base = u.searchParams.get("q") || (m ? "hotels in " + m[1] : fromPath ? "hotels in " + fromPath : "");
+      if (!base) return u.href;
+      const ci = dayDate(g && g.day), nights = m ? Number(m[2]) : null;
+      let q = base;
+      if (ci && nights) { const co = new Date(ci); co.setUTCDate(co.getUTCDate() + nights); q += " from " + words(ci) + " to " + words(co); }
+      else if (ci) q += " from " + words(ci);
+      q += " for " + adults;
+      return "https://www.google.com/travel/search?q=" + encodeURIComponent(q);
+    }
+    return u.href;
+  }
+  const partyNow = () => { const bp = (current && briefs[current.id] || {}).payload || {}; return 1 + (Array.isArray(bp.who) ? bp.who.length : 0); };
+  const fitted = (url, g) => fitLink(url, g, partyNow(), current && current.date_from);
   async function prefillBooking(g) {
     showTab("wallet"); await paintBookings();
     const f = document.querySelector("#wallet-bookings form.book-add"); if (!f) return;
@@ -1103,7 +1134,7 @@
       ul.append(el("li", { "data-leg-title": g.title }, el("div", { class: "leg-body" },
         el("div", { class: "leg-top" }, el("span", { class: "tag" }, LEG_TAG[g.by] || "Other"), g.day ? el("span", { class: "day" }, "Day " + g.day + (d ? " · " + fmtDate(d) : "")) : "", el("span", { class: "leg-title" }, g.title), g.unchecked ? el("span", { class: "muted small" }, " · not yet checked") : ""),
         el("div", { class: "leg-foot" }, el("span", { class: "planned-mark" }, "Tentative"), el("span", { class: "started-mark", hidden: "" }, "Booking started"), el("span", { class: "booked-mark", hidden: "" }, "Booked"),
-          g.book && g.book.url ? extLink(g.book.url, g.book.label || "Book on the seller's site", "book") : "",
+          g.book && g.book.url ? extLink(fitted(g.book.url, g), g.book.label || "Book on the seller's site", "book") : "",
           g.book && g.book.url && tripCanWrite ? el("button", { type: "button", class: "link booked-btn", onclick: () => prefillBooking(g) }, "I've booked this") : ""))));
     }
     box.append(ul);
@@ -1447,7 +1478,7 @@
           el("div", { class: "leg-top" }, g.day ? el("span", { class: "day" }, "Day " + g.day) : "", el("span", { class: "leg-title" }, String(g.title || "")), g.price ? el("span", { class: "price" }, String(g.price)) : ""),
           ...legBody(g),
           el("div", { class: "leg-foot" }, who ? el("span", { class: "muted small" }, "From " + who) : "",
-            g.book && g.book.url ? extLink(g.book.url, String(g.book.label || "Book on the seller's site"), "book") : "",
+            g.book && g.book.url ? extLink(fitted(g.book.url, g), String(g.book.label || "Book on the seller's site"), "book") : "",
             // Steps 4-5 of the chat model in the pilot (his “to booking”, 15 Nov 13:01 ET): he books on the seller's page, then
             // says so here; the Wallet's booking form opens filled from the leg, for him to check against the seller's email.
             g.book && /^https:\/\//.test(String(g.book.url)) && tripCanWrite ? el("button", { type: "button", class: "link booked-btn", onclick: () => prefillBooking(g) }, "I've booked this") : "",
