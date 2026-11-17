@@ -603,3 +603,6 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .map-pop .small{font-size:.85em;margin-top:.15rem}
 details.fold>summary{cursor:pointer;font-weight:600;padding:.25rem 0}
 details.fold[open]>summary{margin-bottom:.5rem}
+/* Live research picks (his ruling 17 Nov 09:21 ET): a pick card's lines (area, price basis, nearby, guides) on their own lines. */
+.proposal .msg-body{white-space:pre-line}
+.proposal .srcs a{word-break:break-all}

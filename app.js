@@ -905,7 +905,7 @@
       ol.append(el("li", { class: "pending small share-prompt" }, "Your choices are saved on the trip. The planning team sees them, and everything decided after, once the trip is sent. ", btn));
     }
     ol.scrollTop = ol.scrollHeight;
-    lastThread = rows; paintRail(rows, false);
+    lastThread = rows; paintRail(rows, false); paintResearch();
     // The explore path: while the trip has no places yet and Arlo's last word offers no choices of its own.
     const ex = $("#explore-tiles");
     if (ex) {
@@ -1022,7 +1022,12 @@
       if (go && go.dataset) go.dataset.leg = p.leg;
       const done = el("button", { type: "button", class: "chip yes" }, "I've booked this");
       const later = el("button", { type: "button", class: "chip" }, "Confirm later");
-      const row = el("div", { class: "chips" }, add, go, no), after = el("div", { class: "chips" }, done, later);
+      // A teammate's pick (live research) carries a second link and its sources (his ruling 17 Nov 09:21 ET).
+      const alt = p.alt && safeLink(p.alt.url) ? extLink(safeLink(p.alt.url), p.alt.label || "Compare", "chip") : "";
+      if (alt && alt.dataset) alt.dataset.leg = p.leg;
+      const row = el("div", { class: "chips" }, add, go, alt, no), after = el("div", { class: "chips" }, done, later);
+      const srcs = (Array.isArray(p.src) ? p.src : []).map(safeLink).filter(Boolean);
+      if (srcs.length) li.append(el("p", { class: "muted small srcs" }, "From: ", ...srcs.flatMap((u, i) => [i ? " · " : "", extLink(u, (() => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (_) { return "source"; } })(), "")])));
       const lockAll = () => [add, no, done, later].forEach((b) => { b.disabled = true; });
       add.addEventListener("click", async () => {
         lockAll();
@@ -1092,6 +1097,25 @@
     if (/(\bapt\b\.?|\bunit\b|\bsuite\b|\bflat\b|#)\s*\d/i.test(t)) return "a unit number in an address";
     return null;
   }
+  let researching = null;
+  async function runResearch(r) {
+    if (researching || !current) return;
+    researching = r; const tripId = current.id;
+    paintResearch();
+    const { error } = await sb.functions.invoke("steward-chat", { body: { trip_id: tripId, research: { agent: r.agent, question: r.question } } });
+    researching = null; paintResearch();
+    if (!current || current.id !== tripId) return;
+    if (error) { const st = error.context && error.context.status; $("#talk-note").textContent = st === 429 ? "That's today's live searches for this trip. The team can look again tomorrow." : (r.name || "The team") + " couldn't finish the search just now. Ask again in a minute."; return; }
+    await loadThread(); dotTab("chat");
+  }
+  function paintResearch() {
+    const ol = $("#thread"); if (!ol) return;
+    const old = ol.querySelector(".researching"); if (old) old.remove();
+    if (!researching) return;
+    const T = window.TravelTeam, tm = T ? T.TEAM.find((x) => x.key === researching.agent) : null;
+    ol.append(el("li", { class: "pending small researching", "aria-live": "polite" }, (tm ? tm.name : researching.name || "The team") + " is looking now: searching the guides and reading the pages. Picks will appear here in a minute or so."));
+    ol.scrollTop = ol.scrollHeight;
+  }
   let talking = false;
   async function sendTalk(text) {
     text = (text || "").trim();
@@ -1137,6 +1161,9 @@
       note.textContent = said.join(" ");   // both notes when Tove and Arlo changed things in one turn (review L9)
     }
     // What Arlo saved from the owner's own words (his choice 15 Nov 15:21 ET): said here with undo, and on the Trip tab.
+    // A teammate's live run (his ruling 17 Nov 09:21 ET): the page starts it right after Arlo's reply and shows who is
+    // looking; their message and picks land in the chat when it's done (up to a minute or so).
+    if (data && data.research && data.research.agent) runResearch(data.research);
     const st = (data && Array.isArray(data.settled) ? data.settled : []).filter((x) => x && x.id);
     if (st.length) {
       await loadItems(); dotTab("trip");
