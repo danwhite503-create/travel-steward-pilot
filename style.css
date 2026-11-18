@@ -430,6 +430,27 @@ section h2:first-child,div[data-panel] > h2:first-child{margin-top:20px}
 .talk .msg.me{align-self:flex-end;background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .talk .msg-who{font-size:var(--step--1);font-weight:700;margin-bottom:2px}
 .talk .msg-body{white-space:pre-wrap}
+.talk .msg-body.rich{white-space:normal}
+.msg-body.rich p{margin:0 0 6px}.msg-body.rich p:last-child{margin-bottom:0}
+.msg-body.rich .pick-name{font-weight:700;font-size:1.1rem;line-height:1.25}
+.msg-body.rich .pick-meta{margin:2px 0 8px}
+.msg-body.rich .kv{margin:6px 0;padding-top:6px;border-top:1px solid var(--rule)}
+.msg-body.rich .k{font-size:var(--step--1);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.msg-body.rich .k-sub{font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted)}
+.msg-body.rich .v{margin-top:2px}
+.msg-body.rich .rich-list{margin:2px 0 0;padding-left:1.1em}
+.msg-body.rich .rich-list li{margin:1px 0}
+.msg-body.rich .pick-foot{font-style:italic;margin:8px 0 0}
+.talk .researching{align-self:stretch;border:1px solid var(--rule);border-radius:12px;padding:8px 11px;background:var(--surface)}
+.rbar-head{display:flex;flex-wrap:wrap;gap:4px;align-items:baseline}.rbar-time{margin-left:auto}
+.rbar{height:6px;border-radius:999px;background:var(--rule);overflow:hidden;margin:6px 0 4px}
+.rbar-fill{height:100%;width:0;background:var(--ink);border-radius:999px;transition:width .5s linear}
+.rbar-note{font-size:.8rem}
+.talk .check-line{align-self:stretch;display:block;max-width:100%;color:var(--muted);padding:2px 4px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.talk .check-line strong{color:var(--ink);font-weight:600}
+.check-dot{display:inline-block;vertical-align:middle;margin-right:6px;width:7px;height:7px;border-radius:50%;background:#b07a00;animation:ckpulse 1.6s ease-in-out infinite}
+@keyframes ckpulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.check-dot{animation:none}.rbar-fill{transition:none}}
 .talk .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .talk .chip{border:1px solid var(--ink);border-radius:999px;padding:4px 10px;background:var(--surface);color:var(--ink);font-size:var(--step--1)}
 .badge-sugg{display:inline-block;font-size:.75rem;font-weight:700;border:1px solid #b07a00;color:#7a5400;border-radius:4px;padding:0 4px}

@@ -874,7 +874,7 @@
       if (m.kind === "proposal") { ol.append(proposalCard(m, wasOpen.has(m.id) || rows.slice(i + 1).every((r) => r.kind !== "user"))); return; }
       const tm = T && T.TEAM.find((x) => x.key === m.agent);
       const who = mine ? (m.author === user.id ? "You" : "Someone on this trip") : tm ? tm.name + " · " + (m.agent === "steward" ? "Steward" : tm.role) : "The team";
-      const li = el("li", { class: "msg " + (mine ? "me" : "agent") + (tm && !mine ? " by-" + m.agent : "") }, el("div", { class: "msg-who" }, who), el("div", { class: "msg-body" }, m.body));
+      const li = el("li", { class: "msg " + (mine ? "me" : "agent") + (tm && !mine ? " by-" + m.agent : "") }, el("div", { class: "msg-who" }, who), mine ? el("div", { class: "msg-body" }, m.body) : richBody(m.body));
       if (tabsOn && tm && !mine) { const f = el("span", { class: "msg-face", "aria-hidden": "true" }); f.innerHTML = T.svg(m.agent); li.prepend(f); }
       if (m.kind === "suggestion") li.querySelector(".msg-who").append(" ", el("span", { class: "badge-sugg" }, "suggestion"));
       // Arlo's choices stay tappable when only a proposal card follows them (D-558).
@@ -889,7 +889,10 @@
     for (const it of (ck.error ? [] : ck.data || [])) {
       const p = it.payload || {}; if (it.kind !== "note" || p.type !== "check" || p.status !== "open") continue;
       const tmc = T && T.TEAM.find((x) => x.key === p.by);
-      ol.append(el("li", { class: "pending small" }, (tmc ? tmc.name : "The team") + " is checking: " + String(p.question || "") + ". The answer will appear here" + (shareLive ? "." : " once you send the trip to the planner (Trip tab).")));
+      // A quiet status line, not a quote of the request (his note 17 Nov 22:50 ET: the italic third-person line read badly).
+      const q = String(p.question || "").replace(/^(the )?(traveler|traveller|he|she|they)\s+(wants|would like|asked|asks)( to (know|check))?( whether| if| that)?\s*/i, "").replace(/\.$/, "");
+      ol.append(el("li", { class: "check-line small", title: String(p.question || "") }, el("span", { class: "check-dot", "aria-hidden": "true" }), el("strong", {}, (tmc ? tmc.name : "The team") + " is checking"), " ",
+        el("span", { class: "check-q" }, q.charAt(0).toUpperCase() + q.slice(1))));
     }
     // Share once per trip (his choice 15 Nov 14:24 ET): once something is decided and the trip isn't with the planning
     // team yet, one prompt sits at the foot of the chat; after the share every later decision reaches the team on its own.
@@ -990,7 +993,7 @@
     const T = window.TravelTeam, tm = T && T.TEAM.find((x) => x.key === (((p.type === "choice" || p.type === "book") && p.by) || m.agent || "steward"));   // a choice or book card is Arlo's in the store, from p.by
     const who = tm ? tm.name + " · " + (tm.key === "steward" ? "Steward" : tm.role) : "Arlo · Steward";
     const badge = p.type === "choice" || p.type === "pick" ? "to decide" : p.type === "share" ? "to send" : p.type === "book" ? "to book" : p.type === "traveler" && p.on_trip !== false ? "who's going" : "to save";
-    const li = el("li", { class: "msg agent proposal" + (p.type === "choice" ? " choice" : "") }, el("div", { class: "msg-who" }, who + " ", el("span", { class: "badge-prop" }, badge)), el("div", { class: "msg-body" }, m.body));
+    const li = el("li", { class: "msg agent proposal" + (p.type === "choice" ? " choice" : "") }, el("div", { class: "msg-who" }, who + " ", el("span", { class: "badge-prop" }, badge)), richBody(m.body, p.type === "book" && p.from === "team"));
     if (p.type === "choice") li.append(el("ol", { class: "choice-opts" }, ...(p.options || []).map((o) => el("li", {}, el("strong", {}, o.label), " ", el("span", { class: "muted" }, o.tradeoff)))),
       el("p", { class: "muted small" }, "General, not yet checked. Choosing sets the direction; nothing is booked."));
     if (p.type === "traveler") li.append(el("p", { class: "muted small" }, "Only add people who've agreed to be on the pilot, as the notice asks."));
@@ -1018,7 +1021,8 @@
       const url = safeLink(p.url), fromPlan = p.from !== "team";
       const leg = { title: p.leg, by: p.by, day: Number.isInteger(p.day) ? p.day : null, book: url ? { url, label: p.label || "" } : null };
       const add = el("button", { type: "button", class: "chip" }, fromPlan ? "Book later" : "Add to trip");
-      const go = url ? extLink(url, "Book now", "chip yes book-link") : "";
+      // A live-rate pick names the seller and total on the button (his ask 17 Nov 13:28 ET: the cheaper of seller or hotel).
+      const go = url ? extLink(url, /^Book: /.test(p.label || "") ? "Book now · " + p.label.slice(6) : "Book now", "chip yes book-link") : "";
       if (go && go.dataset) go.dataset.leg = p.leg;
       const done = el("button", { type: "button", class: "chip yes" }, "I've booked this");
       const later = el("button", { type: "button", class: "chip" }, "Confirm later");
@@ -1108,13 +1112,64 @@
     if (error) { const st = error.context && error.context.status; $("#talk-note").textContent = st === 429 ? "That's today's live searches for this trip. The team can look again tomorrow." : (r.name || "The team") + " couldn't finish the search just now. Ask again in a minute."; return; }
     await loadThread(); dotTab("chat");
   }
+  // A progress bar while a teammate searches (his ask 17 Nov 22:50 ET). The function answers once, at the end, so the bar
+  // and its steps follow the clock (a run takes about a minute), not the search itself; it says so, and it fills on done.
+  const RESEARCH_STEPS = [[0, "Searching the guides"], [18, "Reading the pages"], [40, "Choosing picks"], [58, "Getting live rates"], [80, "Nearly there"]];
+  let researchTick = null;
   function paintResearch() {
     const ol = $("#thread"); if (!ol) return;
     const old = ol.querySelector(".researching"); if (old) old.remove();
-    if (!researching) return;
+    if (!researching) { if (researchTick) { clearInterval(researchTick); researchTick = null; } return; }
+    researching.t0 = researching.t0 || Date.now();
     const T = window.TravelTeam, tm = T ? T.TEAM.find((x) => x.key === researching.agent) : null;
-    ol.append(el("li", { class: "pending small researching", "aria-live": "polite" }, (tm ? tm.name : researching.name || "The team") + " is looking now: searching the guides and reading the pages. Picks will appear here in a minute or so."));
-    ol.scrollTop = ol.scrollHeight;
+    const steps = RESEARCH_STEPS.filter(([, l]) => researching.agent === "stay" || l !== "Getting live rates");
+    const bar = el("div", { class: "rbar-fill" }), step = el("span", { class: "rbar-step" }), secs = el("span", { class: "muted" });
+    const track = el("div", { class: "rbar", role: "progressbar", "aria-label": "Search progress (estimated)", "aria-valuemin": "0", "aria-valuemax": "100" }, bar);
+    const li = el("li", { class: "researching small", "aria-live": "polite" },
+      el("div", { class: "rbar-head" }, el("strong", {}, (tm ? tm.name : researching.name || "The team") + " is searching"), " · ", step, el("span", { class: "rbar-time" }, secs)),
+      track, el("div", { class: "muted rbar-note" }, "Usually about a minute. The bar is an estimate; picks appear here when the search is done."));
+    const tick = () => {
+      const t = (Date.now() - researching.t0) / 1000, pct = Math.min(95, Math.round(100 * (1 - Math.exp(-t / 35))));
+      bar.style.width = pct + "%"; track.setAttribute("aria-valuenow", String(pct));
+      const cur = steps.filter(([at]) => t >= at).pop(); if (step.textContent !== cur[1]) step.textContent = cur[1];
+      secs.textContent = Math.floor(t) + "s";
+    };
+    tick(); if (researchTick) clearInterval(researchTick); researchTick = setInterval(() => { if (!researching || !li.isConnected) return; tick(); }, 500);
+    ol.append(li); ol.scrollTop = ol.scrollHeight;
+  }
+  // Message and card text laid out for reading (his ask 17 Nov 22:50 ET): a pick's name as a heading, its facts as labelled
+  // rows, rates and lists as bullets, the caveat small at the foot. Text only (textContent), never HTML from the model.
+  const ROW_LABELS = /^(Still open|Sources|Tradeoff|Price|Nearby|Named by|Live rates(?: \([^)]*\))?|Control [^:]{4,40})\s*:\s*(.+)$/;
+  const hostName = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (_) { return "source"; } };
+  function richBody(text, pick) {
+    const box = el("div", { class: "msg-body rich" });
+    const lines = String(text || "").split(/\n/);
+    let list = null;
+    lines.forEach((raw, i) => {
+      const line = raw.trim(); if (!line) { list = null; return; }
+      if (pick && i === 0) {
+        const cut = line.indexOf(" · ");
+        box.append(el("div", { class: "pick-name" }, cut > 0 ? line.slice(0, cut) : line), cut > 0 ? el("div", { class: "pick-meta muted small" }, line.slice(cut + 3)) : "");
+        return;
+      }
+      if (/^(Not yet checked|All-in means)/.test(line)) { box.append(el("p", { class: "pick-foot muted small" }, line)); return; }
+      if (/^[-•]\s+/.test(line)) { if (!list) { list = el("ul", { class: "rich-list" }); box.append(list); } list.append(el("li", {}, line.replace(/^[-•]\s+/, ""))); return; }
+      list = null;
+      const m = line.match(ROW_LABELS);
+      if (!m) { box.append(el("p", {}, line)); return; }
+      const ctlw = /^Control /.test(m[1]);
+      const lab = ctlw ? "Control week" : m[1].replace(/ \(.*$/, ""), detail = ctlw ? m[1].slice(8) : (m[1].match(/\(([^)]*)\)/) || [])[1], val = m[2];
+      const row = el("div", { class: "kv" }, el("div", { class: "k" }, lab, detail ? el("span", { class: "k-sub" }, " " + detail) : ""));
+      if (lab === "Sources") {
+        const links = val.split(/\s+/).map(safeLink).filter(Boolean);
+        row.append(el("div", { class: "v small" }, ...links.flatMap((u, j) => [j ? " · " : "", extLink(u, hostName(u), "")])));
+      } else if (lab === "Live rates" || lab === "Nearby" || lab === "Named by" || lab === "Still open") {
+        const parts = val.split(lab === "Live rates" ? / · / : lab === "Still open" ? /;\s+/ : /,\s+/).map((x) => x.trim()).filter(Boolean);
+        row.append(parts.length > 1 ? el("ul", { class: "v rich-list" }, ...parts.map((x) => el("li", {}, x.replace(/\.$/, "")))) : el("div", { class: "v" }, val));
+      } else row.append(el("div", { class: "v" }, val));
+      box.append(row);
+    });
+    return box;
   }
   let talking = false;
   async function sendTalk(text) {
